@@ -224,11 +224,11 @@ SET search_path = data, private, pg_temp  -- Always set for SECURITY DEFINER
 AS $$
 DECLARE
     -- Variable declarations
-    v_result type;
+    l_result type;
 BEGIN
     -- Function body
-    
-    RETURN v_result;
+
+    RETURN l_result;
 END;
 $$;
 
@@ -400,26 +400,26 @@ SECURITY DEFINER
 SET search_path = data, private, pg_temp
 AS $$
 DECLARE
-    v_current_status text;
+    l_current_status text;
 BEGIN
     -- Get current status
-    SELECT status INTO v_current_status
+    SELECT status INTO l_current_status
     FROM data.orders
     WHERE id = in_order_id;
-    
+
     -- Check order exists
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Order not found: %', in_order_id
             USING ERRCODE = 'P0002';  -- no_data_found
     END IF;
-    
+
     -- Validate state transition
-    IF v_current_status = 'cancelled' THEN
+    IF l_current_status = 'cancelled' THEN
         RAISE EXCEPTION 'Cannot modify cancelled order: %', in_order_id
             USING ERRCODE = 'P0001',  -- Custom error code
                   HINT = 'Create a new order instead';
     END IF;
-    
+
     -- Perform update
     UPDATE data.orders
     SET status = in_new_status,
@@ -442,30 +442,30 @@ SECURITY DEFINER
 SET search_path = data, private, pg_temp
 AS $$
 DECLARE
-    v_from_balance numeric;
+    l_from_balance numeric;
 BEGIN
     -- Lock source account
-    SELECT balance INTO v_from_balance
+    SELECT balance INTO l_from_balance
     FROM data.accounts
     WHERE id = in_from_account
     FOR UPDATE;
-    
+
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Source account not found';
     END IF;
-    
-    IF v_from_balance < in_amount THEN
-        RAISE EXCEPTION 'Insufficient funds: have %, need %', 
-            v_from_balance, in_amount;
+
+    IF l_from_balance < in_amount THEN
+        RAISE EXCEPTION 'Insufficient funds: have %, need %',
+            l_from_balance, in_amount;
     END IF;
-    
+
     -- Perform transfer
-    UPDATE data.accounts SET balance = balance - in_amount 
+    UPDATE data.accounts SET balance = balance - in_amount
     WHERE id = in_from_account;
-    
-    UPDATE data.accounts SET balance = balance + in_amount 
+
+    UPDATE data.accounts SET balance = balance + in_amount
     WHERE id = in_to_account;
-    
+
 EXCEPTION
     WHEN foreign_key_violation THEN
         RAISE EXCEPTION 'Destination account not found';
@@ -552,7 +552,7 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_valid_transitions jsonb := '{
+    co_valid_transitions jsonb := '{
         "draft": ["pending", "cancelled"],
         "pending": ["confirmed", "cancelled"],
         "confirmed": ["shipped", "cancelled"],
@@ -562,8 +562,8 @@ DECLARE
     }'::jsonb;
 BEGIN
     IF TG_OP = 'UPDATE' AND OLD.status != NEW.status THEN
-        IF NOT (v_valid_transitions->OLD.status) ? NEW.status THEN
-            RAISE EXCEPTION 'Invalid status transition: % -> %', 
+        IF NOT (co_valid_transitions->OLD.status) ? NEW.status THEN
+            RAISE EXCEPTION 'Invalid status transition: % -> %',
                 OLD.status, NEW.status;
         END IF;
     END IF;

@@ -107,21 +107,21 @@ RETURNS boolean
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_lock_id bigint;
-    v_acquired boolean;
+    l_lock_id bigint;
+    l_acquired boolean;
 BEGIN
-    SELECT lock_id INTO v_lock_id FROM app_migration.lock_config WHERE id = 1;
-    
+    SELECT lock_id INTO l_lock_id FROM app_migration.lock_config WHERE id = 1;
+
     -- Try to acquire advisory lock (non-blocking)
-    v_acquired := pg_try_advisory_lock(v_lock_id);
-    
-    IF v_acquired THEN
+    l_acquired := pg_try_advisory_lock(l_lock_id);
+
+    IF l_acquired THEN
         RAISE NOTICE 'Migration lock acquired';
     ELSE
         RAISE NOTICE 'Migration lock not available - another migration is running';
     END IF;
-    
-    RETURN v_acquired;
+
+    RETURN l_acquired;
 END;
 $$;
 
@@ -135,28 +135,28 @@ RETURNS boolean
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_lock_id bigint;
-    v_timeout integer;
-    v_start_time timestamptz := clock_timestamp();
+    l_lock_id bigint;
+    l_timeout integer;
+    l_start_time timestamptz := clock_timestamp();
 BEGIN
-    SELECT lock_id, lock_timeout_s INTO v_lock_id, v_timeout 
+    SELECT lock_id, lock_timeout_s INTO l_lock_id, l_timeout
     FROM app_migration.lock_config WHERE id = 1;
-    
+
     -- Use provided timeout or default from config
-    v_timeout := COALESCE(in_timeout_seconds, v_timeout);
-    
+    l_timeout := COALESCE(in_timeout_seconds, l_timeout);
+
     -- Try to acquire, with timeout
     LOOP
-        IF pg_try_advisory_lock(v_lock_id) THEN
+        IF pg_try_advisory_lock(l_lock_id) THEN
             RAISE NOTICE 'Migration lock acquired';
             RETURN true;
         END IF;
-        
-        IF clock_timestamp() > v_start_time + make_interval(secs := v_timeout) THEN
-            RAISE EXCEPTION 'Timeout acquiring migration lock after % seconds', v_timeout
+
+        IF clock_timestamp() > l_start_time + make_interval(secs := l_timeout) THEN
+            RAISE EXCEPTION 'Timeout acquiring migration lock after % seconds', l_timeout
                 USING HINT = 'Another migration may be running. Check app_migration.is_locked()';
         END IF;
-        
+
         -- Wait 100ms before retry
         PERFORM pg_sleep(0.1);
     END LOOP;
@@ -171,19 +171,19 @@ RETURNS boolean
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_lock_id bigint;
-    v_released boolean;
+    l_lock_id bigint;
+    l_released boolean;
 BEGIN
-    SELECT lock_id INTO v_lock_id FROM app_migration.lock_config WHERE id = 1;
-    v_released := pg_advisory_unlock(v_lock_id);
-    
-    IF v_released THEN
+    SELECT lock_id INTO l_lock_id FROM app_migration.lock_config WHERE id = 1;
+    l_released := pg_advisory_unlock(l_lock_id);
+
+    IF l_released THEN
         RAISE NOTICE 'Migration lock released';
     ELSE
         RAISE NOTICE 'Migration lock was not held';
     END IF;
-    
-    RETURN v_released;
+
+    RETURN l_released;
 END;
 $$;
 
@@ -436,18 +436,18 @@ RETURNS bigint
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_id bigint;
+    l_id bigint;
 BEGIN
     INSERT INTO app_migration.changelog (
-        version, description, type, filename, checksum, 
+        version, description, type, filename, checksum,
         execution_time_ms, success
     ) VALUES (
         in_version, in_description, in_type, in_filename,
         in_checksum, in_execution_time_ms, in_success
     )
-    RETURNING id INTO v_id;
-    
-    RETURN v_id;
+    RETURNING id INTO l_id;
+
+    RETURN l_id;
 END;
 $$;
 
@@ -463,35 +463,35 @@ CREATE OR REPLACE PROCEDURE app_migration.execute(
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_checksum text;
-    v_stored_checksum text;
-    v_start_time timestamptz;
-    v_execution_time_ms integer;
-    v_log_id bigint;
+    l_checksum text;
+    l_stored_checksum text;
+    l_start_time timestamptz;
+    l_execution_time_ms integer;
+    l_log_id bigint;
 BEGIN
     -- Calculate checksum
-    v_checksum := app_migration.calculate_checksum(in_sql);
-    
+    l_checksum := app_migration.calculate_checksum(in_sql);
+
     -- Handle versioned migrations
     IF in_type = 'versioned' THEN
         IF app_migration.is_version_applied(in_version) THEN
             -- Verify checksum hasn't changed
-            SELECT checksum INTO v_stored_checksum
+            SELECT checksum INTO l_stored_checksum
             FROM app_migration.changelog
             WHERE version = in_version AND type = 'versioned' AND success = true
             ORDER BY executed_at DESC LIMIT 1;
-            
-            IF in_validate_checksum AND v_stored_checksum IS DISTINCT FROM v_checksum THEN
+
+            IF in_validate_checksum AND l_stored_checksum IS DISTINCT FROM l_checksum THEN
                 RAISE EXCEPTION 'Checksum mismatch for version %: stored=%, current=%',
-                    in_version, v_stored_checksum, v_checksum
+                    in_version, l_stored_checksum, l_checksum
                     USING HINT = 'Migration has been modified after execution. Use validate_checksum := false to skip this check.';
             END IF;
-            
+
             RAISE NOTICE 'Migration % already applied, skipping', in_version;
             RETURN;
         END IF;
     END IF;
-    
+
     -- Handle repeatable migrations
     IF in_type = 'repeatable' THEN
         IF NOT app_migration.repeatable_needs_run(in_filename, in_sql) THEN
@@ -499,31 +499,31 @@ BEGIN
             RETURN;
         END IF;
     END IF;
-    
+
     -- Execute migration
     RAISE NOTICE 'Executing % migration: % - %', in_type, in_version, in_description;
-    v_start_time := clock_timestamp();
-    
+    l_start_time := clock_timestamp();
+
     BEGIN
         EXECUTE in_sql;
-        
-        v_execution_time_ms := extract(milliseconds from clock_timestamp() - v_start_time)::integer;
-        
+
+        l_execution_time_ms := extract(milliseconds from clock_timestamp() - l_start_time)::integer;
+
         -- Register successful execution
-        v_log_id := app_migration.register_execution(
+        l_log_id := app_migration.register_execution(
             in_version, in_description, in_type, in_filename,
-            v_checksum, v_execution_time_ms, true
+            l_checksum, l_execution_time_ms, true
         );
-        
-        RAISE NOTICE 'Applied % migration: % (% ms)', in_type, in_version, v_execution_time_ms;
-        
+
+        RAISE NOTICE 'Applied % migration: % (% ms)', in_type, in_version, l_execution_time_ms;
+
     EXCEPTION WHEN OTHERS THEN
         -- Register failed execution
-        v_log_id := app_migration.register_execution(
+        l_log_id := app_migration.register_execution(
             in_version, in_description, in_type, in_filename,
-            v_checksum, NULL, false
+            l_checksum, NULL, false
         );
-        
+
         RAISE EXCEPTION 'Migration % failed: %', in_version, SQLERRM
             USING DETAIL = 'Migration has been logged as failed in changelog';
     END;
@@ -597,63 +597,63 @@ CREATE OR REPLACE PROCEDURE app_migration.rollback(in_version text)
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_rollback_sql text;
-    v_changelog_id bigint;
-    v_start_time timestamptz;
-    v_execution_time_ms integer;
+    l_rollback_sql text;
+    l_changelog_id bigint;
+    l_start_time timestamptz;
+    l_execution_time_ms integer;
 BEGIN
     -- Get changelog entry
-    SELECT id INTO v_changelog_id
+    SELECT id INTO l_changelog_id
     FROM app_migration.changelog
     WHERE version = in_version AND type = 'versioned' AND success = true
     ORDER BY executed_at DESC
     LIMIT 1;
-    
-    IF v_changelog_id IS NULL THEN
+
+    IF l_changelog_id IS NULL THEN
         RAISE EXCEPTION 'Version % not found in changelog or already rolled back', in_version;
     END IF;
-    
+
     -- Get rollback SQL
-    SELECT rollback_sql INTO v_rollback_sql
+    SELECT rollback_sql INTO l_rollback_sql
     FROM app_migration.rollback_scripts
     WHERE version = in_version;
-    
-    IF v_rollback_sql IS NULL THEN
+
+    IF l_rollback_sql IS NULL THEN
         RAISE EXCEPTION 'No rollback script registered for version %', in_version
             USING HINT = 'Register a rollback script with app_migration.register_rollback()';
     END IF;
-    
+
     -- Execute rollback
     RAISE NOTICE 'Rolling back version %', in_version;
-    v_start_time := clock_timestamp();
-    
+    l_start_time := clock_timestamp();
+
     BEGIN
-        EXECUTE v_rollback_sql;
-        
-        v_execution_time_ms := extract(milliseconds from clock_timestamp() - v_start_time)::integer;
-        
+        EXECUTE l_rollback_sql;
+
+        l_execution_time_ms := extract(milliseconds from clock_timestamp() - l_start_time)::integer;
+
         -- Log successful rollback
         INSERT INTO app_migration.rollback_history (
             changelog_id, version, rollback_sql, execution_time_ms, success
         ) VALUES (
-            v_changelog_id, in_version, v_rollback_sql, v_execution_time_ms, true
+            l_changelog_id, in_version, l_rollback_sql, l_execution_time_ms, true
         );
-        
+
         -- Mark original migration as rolled back
         UPDATE app_migration.changelog
         SET success = false
-        WHERE id = v_changelog_id;
-        
-        RAISE NOTICE 'Rolled back version % (% ms)', in_version, v_execution_time_ms;
-        
+        WHERE id = l_changelog_id;
+
+        RAISE NOTICE 'Rolled back version % (% ms)', in_version, l_execution_time_ms;
+
     EXCEPTION WHEN OTHERS THEN
         -- Log failed rollback
         INSERT INTO app_migration.rollback_history (
             changelog_id, version, rollback_sql, success, error_message
         ) VALUES (
-            v_changelog_id, in_version, v_rollback_sql, false, SQLERRM
+            l_changelog_id, in_version, l_rollback_sql, false, SQLERRM
         );
-        
+
         RAISE EXCEPTION 'Rollback of version % failed: %', in_version, SQLERRM;
     END;
 END;
@@ -670,12 +670,12 @@ CREATE OR REPLACE PROCEDURE app_migration.clear_failed()
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_count integer;
+    l_count integer;
 BEGIN
     DELETE FROM app_migration.changelog WHERE success = false;
-    GET DIAGNOSTICS v_count = ROW_COUNT;
-    
-    RAISE NOTICE 'Cleared % failed migration records', v_count;
+    GET DIAGNOSTICS l_count = ROW_COUNT;
+
+    RAISE NOTICE 'Cleared % failed migration records', l_count;
 END;
 $$;
 
@@ -696,35 +696,35 @@ LANGUAGE plpgsql
 STABLE
 AS $$
 DECLARE
-    v_migration jsonb;
-    v_version text;
-    v_content text;
-    v_stored text;
-    v_current text;
+    l_migration jsonb;
+    l_version text;
+    l_content text;
+    l_stored text;
+    l_current text;
 BEGIN
-    FOR v_migration IN SELECT * FROM jsonb_array_elements(in_migrations)
+    FOR l_migration IN SELECT * FROM jsonb_array_elements(in_migrations)
     LOOP
-        v_version := v_migration->>'version';
-        v_content := v_migration->>'content';
-        v_current := app_migration.calculate_checksum(v_content);
-        
-        SELECT c.checksum, c.filename INTO v_stored, filename
+        l_version := l_migration->>'version';
+        l_content := l_migration->>'content';
+        l_current := app_migration.calculate_checksum(l_content);
+
+        SELECT c.checksum, c.filename INTO l_stored, filename
         FROM app_migration.changelog c
-        WHERE c.version = v_version AND c.type = 'versioned' AND c.success = true
+        WHERE c.version = l_version AND c.type = 'versioned' AND c.success = true
         ORDER BY c.executed_at DESC LIMIT 1;
-        
-        IF v_stored IS NULL THEN
+
+        IF l_stored IS NULL THEN
             status := 'PENDING';
-        ELSIF v_stored = v_current THEN
+        ELSIF l_stored = l_current THEN
             status := 'OK';
         ELSE
             status := 'MODIFIED';
         END IF;
-        
-        version := v_version;
-        stored_checksum := v_stored;
-        current_checksum := v_current;
-        
+
+        version := l_version;
+        stored_checksum := l_stored;
+        current_checksum := l_current;
+
         RETURN NEXT;
     END LOOP;
 END;

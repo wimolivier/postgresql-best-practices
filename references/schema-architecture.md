@@ -459,22 +459,22 @@ SECURITY DEFINER
 SET search_path = data, private, pg_temp
 AS $$
 DECLARE
-    v_current_status text;
+    l_current_status text;
 BEGIN
-    SELECT status INTO v_current_status
+    SELECT status INTO l_current_status
     FROM data.orders WHERE id = in_id;
-    
+
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Order not found: %', in_id
             USING ERRCODE = 'P0002';
     END IF;
-    
+
     -- Business rule: Can't change completed/cancelled orders
-    IF v_current_status IN ('completed', 'cancelled') THEN
-        RAISE EXCEPTION 'Cannot modify % order', v_current_status
+    IF l_current_status IN ('completed', 'cancelled') THEN
+        RAISE EXCEPTION 'Cannot modify % order', l_current_status
             USING ERRCODE = 'P0001';
     END IF;
-    
+
     UPDATE data.orders
     SET status = in_status
     WHERE id = in_id;

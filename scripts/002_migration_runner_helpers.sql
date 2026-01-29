@@ -18,35 +18,35 @@ CREATE OR REPLACE PROCEDURE app_migration.run_versioned_batch(
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_migration jsonb;
-    v_count integer := 0;
-    v_skipped integer := 0;
+    l_migration jsonb;
+    l_count integer := 0;
+    l_skipped integer := 0;
 BEGIN
     -- Ensure lock is held
     IF NOT app_migration.is_locked() THEN
         RAISE EXCEPTION 'Migration lock not held. Call app_migration.acquire_lock() first.';
     END IF;
-    
+
     RAISE NOTICE 'Processing % versioned migrations...', jsonb_array_length(in_migrations);
-    
+
     -- Process migrations in order (assumes array is sorted)
-    FOR v_migration IN SELECT * FROM jsonb_array_elements(in_migrations) ORDER BY value->>'version'
+    FOR l_migration IN SELECT * FROM jsonb_array_elements(in_migrations) ORDER BY value->>'version'
     LOOP
-        IF app_migration.is_version_applied(v_migration->>'version') THEN
-            v_skipped := v_skipped + 1;
+        IF app_migration.is_version_applied(l_migration->>'version') THEN
+            l_skipped := l_skipped + 1;
         ELSE
             CALL app_migration.execute(
-                in_version := v_migration->>'version',
-                in_description := v_migration->>'description',
+                in_version := l_migration->>'version',
+                in_description := l_migration->>'description',
                 in_type := 'versioned',
-                in_filename := v_migration->>'filename',
-                in_sql := v_migration->>'sql'
+                in_filename := l_migration->>'filename',
+                in_sql := l_migration->>'sql'
             );
-            v_count := v_count + 1;
+            l_count := l_count + 1;
         END IF;
     END LOOP;
-    
-    RAISE NOTICE 'Batch complete: % applied, % skipped', v_count, v_skipped;
+
+    RAISE NOTICE 'Batch complete: % applied, % skipped', l_count, l_skipped;
 END;
 $$;
 
@@ -59,34 +59,34 @@ CREATE OR REPLACE PROCEDURE app_migration.run_repeatable_batch(
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_migration jsonb;
-    v_count integer := 0;
-    v_skipped integer := 0;
+    l_migration jsonb;
+    l_count integer := 0;
+    l_skipped integer := 0;
 BEGIN
     -- Ensure lock is held
     IF NOT app_migration.is_locked() THEN
         RAISE EXCEPTION 'Migration lock not held. Call app_migration.acquire_lock() first.';
     END IF;
-    
+
     RAISE NOTICE 'Processing % repeatable migrations...', jsonb_array_length(in_migrations);
-    
-    FOR v_migration IN SELECT * FROM jsonb_array_elements(in_migrations) ORDER BY value->>'filename'
+
+    FOR l_migration IN SELECT * FROM jsonb_array_elements(in_migrations) ORDER BY value->>'filename'
     LOOP
-        IF app_migration.repeatable_needs_run(v_migration->>'filename', v_migration->>'sql') THEN
+        IF app_migration.repeatable_needs_run(l_migration->>'filename', l_migration->>'sql') THEN
             CALL app_migration.execute(
-                in_version := v_migration->>'filename',  -- Use filename as version for repeatables
-                in_description := v_migration->>'description',
+                in_version := l_migration->>'filename',  -- Use filename as version for repeatables
+                in_description := l_migration->>'description',
                 in_type := 'repeatable',
-                in_filename := v_migration->>'filename',
-                in_sql := v_migration->>'sql'
+                in_filename := l_migration->>'filename',
+                in_sql := l_migration->>'sql'
             );
-            v_count := v_count + 1;
+            l_count := l_count + 1;
         ELSE
-            v_skipped := v_skipped + 1;
+            l_skipped := l_skipped + 1;
         END IF;
     END LOOP;
-    
-    RAISE NOTICE 'Batch complete: % applied, % skipped (unchanged)', v_count, v_skipped;
+
+    RAISE NOTICE 'Batch complete: % applied, % skipped (unchanged)', l_count, l_skipped;
 END;
 $$;
 
@@ -106,35 +106,35 @@ CREATE OR REPLACE PROCEDURE app_migration.run_all(
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_lock_acquired boolean := false;
+    l_lock_acquired boolean := false;
 BEGIN
     -- Acquire lock if requested
     IF in_acquire_lock THEN
-        v_lock_acquired := app_migration.acquire_lock();
-        IF NOT v_lock_acquired THEN
+        l_lock_acquired := app_migration.acquire_lock();
+        IF NOT l_lock_acquired THEN
             RAISE EXCEPTION 'Could not acquire migration lock';
         END IF;
     END IF;
-    
+
     BEGIN
         -- Run versioned migrations first
         IF jsonb_array_length(in_versioned_migrations) > 0 THEN
             CALL app_migration.run_versioned_batch(in_versioned_migrations);
         END IF;
-        
+
         -- Run repeatable migrations after versioned
         IF jsonb_array_length(in_repeatable_migrations) > 0 THEN
             CALL app_migration.run_repeatable_batch(in_repeatable_migrations);
         END IF;
-        
+
         -- Release lock if requested
-        IF in_release_lock AND v_lock_acquired THEN
+        IF in_release_lock AND l_lock_acquired THEN
             PERFORM app_migration.release_lock();
         END IF;
-        
+
     EXCEPTION WHEN OTHERS THEN
         -- Release lock on error if we acquired it
-        IF v_lock_acquired THEN
+        IF l_lock_acquired THEN
             PERFORM app_migration.release_lock();
         END IF;
         RAISE;
@@ -243,31 +243,31 @@ CREATE OR REPLACE PROCEDURE app_migration.print_status()
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_info record;
-    v_row record;
+    r_info record;
+    r_row record;
 BEGIN
-    SELECT * INTO v_info FROM app_migration.info();
-    
+    SELECT * INTO r_info FROM app_migration.info();
+
     RAISE NOTICE '';
     RAISE NOTICE '=== Migration Status ===';
-    RAISE NOTICE 'Current version: %', v_info.current_version;
-    RAISE NOTICE 'Total migrations: % (% successful, % failed)', 
-        v_info.total_migrations, v_info.successful_migrations, v_info.failed_migrations;
-    RAISE NOTICE 'Last migration: % at %', v_info.last_migration_version, v_info.last_migration_at;
-    RAISE NOTICE 'Lock status: %', CASE WHEN v_info.is_locked THEN 'LOCKED' ELSE 'unlocked' END;
+    RAISE NOTICE 'Current version: %', r_info.current_version;
+    RAISE NOTICE 'Total migrations: % (% successful, % failed)',
+        r_info.total_migrations, r_info.successful_migrations, r_info.failed_migrations;
+    RAISE NOTICE 'Last migration: % at %', r_info.last_migration_version, r_info.last_migration_at;
+    RAISE NOTICE 'Lock status: %', CASE WHEN r_info.is_locked THEN 'LOCKED' ELSE 'unlocked' END;
     RAISE NOTICE '';
     RAISE NOTICE '=== Recent Migrations ===';
-    
-    FOR v_row IN SELECT * FROM app_migration.status() LIMIT 10
+
+    FOR r_row IN SELECT * FROM app_migration.status() LIMIT 10
     LOOP
-        RAISE NOTICE '% | % | % | % | %', 
-            rpad(v_row.version, 10), 
-            rpad(v_row.type, 10),
-            rpad(v_row.state, 7),
-            rpad(COALESCE(v_row.execution_time, '-'), 8),
-            left(v_row.description, 40);
+        RAISE NOTICE '% | % | % | % | %',
+            rpad(r_row.version, 10),
+            rpad(r_row.type, 10),
+            rpad(r_row.state, 7),
+            rpad(COALESCE(r_row.execution_time, '-'), 8),
+            left(r_row.description, 40);
     END LOOP;
-    
+
     RAISE NOTICE '';
 END;
 $$;
@@ -283,26 +283,26 @@ CREATE OR REPLACE PROCEDURE app_migration.rollback_to(in_target_version text)
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_version text;
-    v_count integer := 0;
+    l_version text;
+    l_count integer := 0;
 BEGIN
     -- Get versions to rollback in reverse order
-    FOR v_version IN 
-        SELECT version 
-        FROM app_migration.changelog 
-        WHERE type = 'versioned' 
-          AND success = true 
+    FOR l_version IN
+        SELECT version
+        FROM app_migration.changelog
+        WHERE type = 'versioned'
+          AND success = true
           AND version > in_target_version
         ORDER BY version DESC
     LOOP
-        CALL app_migration.rollback(v_version);
-        v_count := v_count + 1;
+        CALL app_migration.rollback(l_version);
+        l_count := l_count + 1;
     END LOOP;
-    
-    IF v_count = 0 THEN
+
+    IF l_count = 0 THEN
         RAISE NOTICE 'No migrations to rollback (already at or before version %)', in_target_version;
     ELSE
-        RAISE NOTICE 'Rolled back % migrations to version %', v_count, in_target_version;
+        RAISE NOTICE 'Rolled back % migrations to version %', l_count, in_target_version;
     END IF;
 END;
 $$;
