@@ -590,6 +590,95 @@ ALTER SYSTEM SET effective_io_concurrency = 200;
 SELECT pg_reload_conf();
 ```
 
+## JIT Compilation
+
+### Overview
+
+JIT (Just-In-Time) compilation can speed up CPU-intensive queries by compiling expressions and tuple deforming into native code. Available since PostgreSQL 11.
+
+### When JIT Helps
+
+```sql
+-- JIT beneficial for:
+-- - Complex expressions in WHERE, SELECT
+-- - Large table scans with many columns
+-- - Aggregations over many rows
+-- - Queries spending significant time in expression evaluation
+
+-- Check if JIT is available
+SELECT name, setting FROM pg_settings WHERE name LIKE 'jit%';
+```
+
+### JIT Settings
+
+```sql
+-- Enable/disable JIT (default: on in PG12+)
+SET jit = on;
+
+-- Cost thresholds (query must exceed these costs)
+SET jit_above_cost = 100000;           -- Enable JIT (default: 100000)
+SET jit_inline_above_cost = 500000;    -- Inline functions (default: 500000)
+SET jit_optimize_above_cost = 500000;  -- Full optimization (default: 500000)
+
+-- For OLAP/analytics workloads, lower thresholds
+ALTER SYSTEM SET jit_above_cost = 10000;
+ALTER SYSTEM SET jit_inline_above_cost = 50000;
+ALTER SYSTEM SET jit_optimize_above_cost = 50000;
+SELECT pg_reload_conf();
+```
+
+### Monitoring JIT Usage
+
+```sql
+-- Check JIT in EXPLAIN
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT sum(total), avg(total), count(*)
+FROM data.large_orders
+WHERE status = 'completed';
+
+-- Look for:
+-- JIT:
+--   Functions: 5
+--   Options: Inlining true, Optimization true, Expressions true, Deforming true
+--   Timing: Generation 1.234 ms, Inlining 5.678 ms, Optimization 12.345 ms, Emission 23.456 ms, Total 42.713 ms
+```
+
+### When to Disable JIT
+
+```sql
+-- JIT adds overhead for compilation
+-- Disable for short OLTP queries
+
+-- Session level
+SET jit = off;
+
+-- Or raise thresholds for mixed workloads
+SET jit_above_cost = 500000;
+
+-- In application connection
+-- postgresql://user:pass@host/db?options=-c%20jit=off
+```
+
+### JIT Troubleshooting
+
+```sql
+-- JIT not being used when expected?
+-- 1. Check if enabled
+SHOW jit;
+
+-- 2. Check if LLVM is installed
+SELECT pg_jit_available();
+
+-- 3. Check query cost exceeds threshold
+EXPLAIN (COSTS) SELECT ...;
+-- Total cost must exceed jit_above_cost
+
+-- JIT slowing down queries?
+-- Compilation time can exceed execution savings for small result sets
+-- Solution: Raise thresholds or disable for that query
+SET LOCAL jit = off;
+```
+
 ## Monitoring Queries
 
 ### Slow Query Detection

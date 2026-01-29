@@ -524,6 +524,34 @@ $$ LANGUAGE plpgsql;
 
 ## Performance Anti-Patterns
 
+### ❌ SELECT FOR UPDATE Without NOWAIT/SKIP LOCKED
+
+**Problem**: Blocking indefinitely on locked rows, causing timeouts and deadlocks.
+
+```sql
+-- Bad: Blocks forever if row is locked
+SELECT * FROM data.orders WHERE id = $1 FOR UPDATE;
+```
+
+**Solution**: Use `NOWAIT` to fail fast or `SKIP LOCKED` for queue patterns.
+
+```sql
+-- Good: Fail immediately if locked
+SELECT * FROM data.orders WHERE id = $1 FOR UPDATE NOWAIT;
+-- Raises: ERROR: could not obtain lock on row
+
+-- Good: Skip locked rows (for job queues)
+SELECT * FROM data.orders
+WHERE status = 'pending'
+ORDER BY created_at
+LIMIT 1
+FOR UPDATE SKIP LOCKED;
+
+-- Good: With timeout
+SET lock_timeout = '5s';
+SELECT * FROM data.orders WHERE id = $1 FOR UPDATE;
+```
+
 ### ❌ Missing Indexes on Foreign Keys
 
 **Problem**: Slow CASCADE operations, slow JOINs.

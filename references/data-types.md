@@ -366,6 +366,139 @@ api_token uuid DEFAULT gen_random_uuid()
 -- Note: uuidv4() is now alias for gen_random_uuid() in PG18
 ```
 
+## Hierarchical Data with ltree
+
+### Install ltree Extension
+
+```sql
+CREATE EXTENSION IF NOT EXISTS ltree;
+```
+
+### ltree Data Type
+
+```sql
+-- ltree stores hierarchical paths like: 'Root.Science.Biology.Genetics'
+-- Labels separated by dots, each label is alphanumeric
+
+CREATE TABLE data.categories (
+    id          uuid PRIMARY KEY DEFAULT uuidv7(),
+    name        text NOT NULL,
+    path        ltree NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- Create indexes for efficient queries
+CREATE INDEX categories_path_gist_idx ON data.categories USING gist (path);
+CREATE INDEX categories_path_btree_idx ON data.categories USING btree (path);
+
+-- Insert hierarchical data
+INSERT INTO data.categories (name, path) VALUES
+    ('Products', 'Products'),
+    ('Electronics', 'Products.Electronics'),
+    ('Phones', 'Products.Electronics.Phones'),
+    ('Computers', 'Products.Electronics.Computers'),
+    ('Laptops', 'Products.Electronics.Computers.Laptops'),
+    ('Clothing', 'Products.Clothing'),
+    ('Shirts', 'Products.Clothing.Shirts');
+```
+
+### ltree Queries
+
+```sql
+-- Find all descendants of Electronics
+SELECT * FROM data.categories
+WHERE path <@ 'Products.Electronics';
+-- Returns: Electronics, Phones, Computers, Laptops
+
+-- Find all ancestors of Laptops
+SELECT * FROM data.categories
+WHERE path @> 'Products.Electronics.Computers.Laptops';
+-- Returns: Products, Electronics, Computers, Laptops
+
+-- Find direct children
+SELECT * FROM data.categories
+WHERE path ~ 'Products.Electronics.*{1}';
+-- Returns: Phones, Computers (one level deep)
+
+-- Find items at specific depth
+SELECT * FROM data.categories
+WHERE nlevel(path) = 3;
+-- Returns items at depth 3
+
+-- Get parent path
+SELECT name, subpath(path, 0, -1) AS parent_path
+FROM data.categories
+WHERE name = 'Laptops';
+-- Returns: Products.Electronics.Computers
+```
+
+### ltree Operators
+
+```sql
+-- @>  ancestor of (or equal)
+-- <@  descendant of (or equal)
+-- ~   match lquery pattern
+-- ?   match any ltxtquery
+-- ||  concatenate paths
+
+-- Pattern matching with lquery
+SELECT * FROM data.categories
+WHERE path ~ 'Products.*.Computers.*';  -- Any path containing Computers
+
+-- Text search with ltxtquery
+SELECT * FROM data.categories
+WHERE path ? 'Elect* & !Phones';  -- Contains Elect*, not Phones
+```
+
+### Building Hierarchical Trees
+
+```sql
+-- Get full category tree with depth
+CREATE FUNCTION api.get_category_tree(in_root_path ltree DEFAULT 'Products')
+RETURNS TABLE (
+    id uuid,
+    name text,
+    path ltree,
+    depth integer
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+    SELECT id, name, path, nlevel(path) - nlevel(in_root_path) AS depth
+    FROM data.categories
+    WHERE path <@ in_root_path
+    ORDER BY path;
+$$;
+
+-- Move subtree
+CREATE PROCEDURE api.move_category(
+    in_category_id uuid,
+    in_new_parent_path ltree
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+DECLARE
+    l_old_path ltree;
+    l_new_path ltree;
+    l_category_name text;
+BEGIN
+    SELECT path, name INTO l_old_path, l_category_name
+    FROM data.categories WHERE id = in_category_id;
+
+    l_new_path := in_new_parent_path || l_category_name;
+
+    -- Update category and all descendants
+    UPDATE data.categories
+    SET path = l_new_path || subpath(path, nlevel(l_old_path))
+    WHERE path <@ l_old_path;
+END;
+$$;
+```
+
 ## Types to Avoid
 
 ### Never Use These Types

@@ -201,21 +201,72 @@ CREATE INDEX events_created_brin_idx ON data.events USING brin(created_at);
 
 ## Index Design Strategies
 
-### Covering Indexes (Index-Only Scans)
+### Covering Indexes with INCLUDE (PostgreSQL 11+)
 
-Include all columns needed by query to avoid table access:
+Include all columns needed by query to avoid table access (index-only scans):
 
 ```sql
--- Query needs: customer_id, status, total
--- Include extra columns in index
+-- Basic covering index
+-- Index key: customer_id (used for filtering/sorting)
+-- Included: status, total, created_at (returned but not used for lookup)
 CREATE INDEX orders_customer_covering_idx
     ON data.orders(customer_id)
     INCLUDE (status, total, created_at);
 
--- Query satisfied entirely from index
-SELECT customer_id, status, total 
-FROM data.orders 
+-- Query satisfied entirely from index (no heap access)
+SELECT customer_id, status, total
+FROM data.orders
 WHERE customer_id = 'uuid-here';
+```
+
+### INCLUDE vs Multi-Column Index
+
+```sql
+-- Multi-column index: All columns in B-tree structure
+CREATE INDEX orders_customer_status_idx ON data.orders(customer_id, status);
+-- Can be used for: WHERE customer_id = X
+--                  WHERE customer_id = X AND status = Y
+--                  ORDER BY customer_id, status
+
+-- INCLUDE index: Only key columns in B-tree, included columns stored separately
+CREATE INDEX orders_customer_include_idx ON data.orders(customer_id) INCLUDE (status);
+-- Can be used for: WHERE customer_id = X (returns status without heap access)
+-- Cannot be used for: WHERE status = Y (status not in B-tree)
+```
+
+### When to Use INCLUDE
+
+```sql
+-- 1. High cardinality key + low cardinality included columns
+CREATE INDEX orders_customer_idx ON data.orders(customer_id)
+    INCLUDE (status, total);  -- status has few distinct values
+
+-- 2. Avoid adding large columns to B-tree
+CREATE INDEX products_sku_idx ON data.products(sku)
+    INCLUDE (name, description);  -- Don't want text in B-tree
+
+-- 3. Unique constraint that returns additional columns
+CREATE UNIQUE INDEX users_email_key ON data.users(email)
+    INCLUDE (id, name);  -- Can return id, name in index-only scan
+
+-- 4. Foreign key lookups returning related data
+CREATE INDEX order_items_order_idx ON data.order_items(order_id)
+    INCLUDE (product_id, quantity, price);
+```
+
+### Verify Index-Only Scans
+
+```sql
+-- EXPLAIN should show "Index Only Scan"
+EXPLAIN (ANALYZE)
+SELECT customer_id, status, total
+FROM data.orders
+WHERE customer_id = 'uuid-here';
+
+-- If showing "Index Scan" instead of "Index Only Scan":
+-- 1. Ensure all SELECTed columns are in INCLUDE
+-- 2. Run VACUUM to update visibility map
+VACUUM data.orders;
 ```
 
 ### Partial Indexes

@@ -808,6 +808,193 @@ END;
 $$;
 ```
 
+## Blue-Green Deployment Patterns
+
+### Overview
+
+Blue-green deployment for database schema changes ensures zero-downtime migrations by maintaining backward compatibility during transitions.
+
+### Key Principles
+
+```markdown
+1. **Expand-Contract Pattern**: Add new → migrate data → remove old
+2. **Backward Compatible**: Old app version must work with new schema
+3. **Forward Compatible**: New app version must work with old schema
+4. **Non-Blocking**: Avoid long-running locks on tables
+```
+
+### Adding a Column
+
+```sql
+-- Phase 1: Add nullable column (backward compatible)
+ALTER TABLE data.users ADD COLUMN phone text;
+
+-- Phase 2: Deploy new app that writes to both old and new
+-- Phase 3: Backfill data
+UPDATE data.users SET phone = extract_phone_from_profile(profile) WHERE phone IS NULL;
+
+-- Phase 4: Add NOT NULL constraint (after all data migrated)
+ALTER TABLE data.users ALTER COLUMN phone SET NOT NULL;
+```
+
+### Renaming a Column
+
+```sql
+-- ❌ Bad: Breaks old app immediately
+ALTER TABLE data.users RENAME COLUMN name TO full_name;
+
+-- ✅ Good: Expand-contract pattern
+
+-- Phase 1: Add new column
+ALTER TABLE data.users ADD COLUMN full_name text;
+
+-- Phase 2: Create trigger to sync both columns
+CREATE FUNCTION private.sync_user_names()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'INSERT' OR NEW.name IS DISTINCT FROM OLD.name THEN
+        NEW.full_name := NEW.name;
+    END IF;
+    IF TG_OP = 'INSERT' OR NEW.full_name IS DISTINCT FROM OLD.full_name THEN
+        NEW.name := NEW.full_name;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER users_sync_names_trg
+    BEFORE INSERT OR UPDATE ON data.users
+    FOR EACH ROW EXECUTE FUNCTION private.sync_user_names();
+
+-- Phase 3: Backfill
+UPDATE data.users SET full_name = name WHERE full_name IS NULL;
+
+-- Phase 4: Deploy new app using full_name
+-- Phase 5: Remove old column and trigger (after old app retired)
+DROP TRIGGER users_sync_names_trg ON data.users;
+DROP FUNCTION private.sync_user_names();
+ALTER TABLE data.users DROP COLUMN name;
+```
+
+### Changing Column Type
+
+```sql
+-- ❌ Bad: Locks table, may fail with data
+ALTER TABLE data.orders ALTER COLUMN status TYPE integer USING status::integer;
+
+-- ✅ Good: Add new column, migrate, swap
+
+-- Phase 1: Add new column
+ALTER TABLE data.orders ADD COLUMN status_new integer;
+
+-- Phase 2: Sync trigger
+CREATE FUNCTION private.sync_order_status()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.status_new := CASE NEW.status
+        WHEN 'pending' THEN 1
+        WHEN 'processing' THEN 2
+        WHEN 'completed' THEN 3
+        ELSE 0
+    END;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER orders_sync_status_trg
+    BEFORE INSERT OR UPDATE OF status ON data.orders
+    FOR EACH ROW EXECUTE FUNCTION private.sync_order_status();
+
+-- Phase 3: Backfill
+UPDATE data.orders SET status_new = CASE status
+    WHEN 'pending' THEN 1 WHEN 'processing' THEN 2 WHEN 'completed' THEN 3 ELSE 0
+END WHERE status_new IS NULL;
+
+-- Phase 4: Update API functions to use status_new
+-- Phase 5: Drop old column
+```
+
+### Adding NOT NULL Constraint
+
+```sql
+-- ❌ Bad: Full table scan with exclusive lock
+ALTER TABLE data.large_table ALTER COLUMN email SET NOT NULL;
+
+-- ✅ Good: NOT VALID then validate separately
+
+-- Phase 1: Add constraint without validation (no lock)
+ALTER TABLE data.large_table
+    ADD CONSTRAINT large_table_email_not_null
+    CHECK (email IS NOT NULL) NOT VALID;
+
+-- Phase 2: Ensure no NULLs in new data (app/trigger enforces)
+
+-- Phase 3: Validate existing data (ShareUpdateExclusiveLock, allows reads/writes)
+ALTER TABLE data.large_table VALIDATE CONSTRAINT large_table_email_not_null;
+
+-- Phase 4: Optionally convert to true NOT NULL
+-- (Requires PG18 or accept the CHECK constraint)
+```
+
+### Creating Index Without Downtime
+
+```sql
+-- ❌ Bad: Blocks writes
+CREATE INDEX orders_email_idx ON data.orders(email);
+
+-- ✅ Good: CONCURRENTLY (allows writes during build)
+CREATE INDEX CONCURRENTLY orders_email_idx ON data.orders(email);
+
+-- Note: CONCURRENTLY cannot be in a transaction
+-- If it fails, the index may be left invalid:
+SELECT indexrelid::regclass, indisvalid
+FROM pg_index
+WHERE NOT indisvalid;
+
+-- Rebuild invalid index
+REINDEX INDEX CONCURRENTLY orders_email_idx;
+```
+
+### Dropping a Column
+
+```sql
+-- ❌ Bad: Immediate drop may break old app
+ALTER TABLE data.users DROP COLUMN legacy_field;
+
+-- ✅ Good: Mark unused, then drop later
+
+-- Phase 1: Stop writing to column (app change)
+-- Phase 2: Deprecate in comments
+COMMENT ON COLUMN data.users.legacy_field IS 'DEPRECATED: Do not use. Will be removed.';
+
+-- Phase 3: (Optional) Rename to make usage obvious
+ALTER TABLE data.users RENAME COLUMN legacy_field TO _deprecated_legacy_field;
+
+-- Phase 4: Drop after verification period
+ALTER TABLE data.users DROP COLUMN _deprecated_legacy_field;
+```
+
+### Migration Checklist for Zero-Downtime
+
+```markdown
+## Pre-Migration
+- [ ] Schema change is backward compatible
+- [ ] Schema change is forward compatible
+- [ ] No exclusive locks on large tables
+- [ ] Tested in staging with production-like data
+- [ ] Rollback plan documented
+
+## During Migration
+- [ ] Monitor query performance
+- [ ] Monitor lock waits
+- [ ] Monitor replication lag
+
+## Post-Migration
+- [ ] Verify data integrity
+- [ ] Clean up temporary objects
+- [ ] Update documentation
+```
+
 ## Complete Implementation
 
 ### Full Migration System Setup Script

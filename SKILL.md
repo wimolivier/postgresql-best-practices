@@ -79,12 +79,22 @@ flowchart LR
 | Document | Purpose |
 |----------|---------|
 | [testing-patterns.md](references/testing-patterns.md) | pgTAP unit testing, test factories |
-| [performance-tuning.md](references/performance-tuning.md) | EXPLAIN ANALYZE, query optimization |
+| [performance-tuning.md](references/performance-tuning.md) | EXPLAIN ANALYZE, query optimization, JIT |
 | [row-level-security.md](references/row-level-security.md) | RLS patterns, multi-tenant isolation |
 | [jsonb-patterns.md](references/jsonb-patterns.md) | JSONB indexing, queries, validation |
 | [audit-logging.md](references/audit-logging.md) | Generic audit triggers, change tracking |
 | [bulk-operations.md](references/bulk-operations.md) | COPY, batch inserts, upserts |
 | [session-management.md](references/session-management.md) | Session variables, connection pooling |
+| [transaction-patterns.md](references/transaction-patterns.md) | Isolation levels, locking, deadlock prevention |
+| [full-text-search.md](references/full-text-search.md) | tsvector, tsquery, ranking, multi-language |
+| [partitioning.md](references/partitioning.md) | Range, list, hash partitioning strategies |
+| [window-functions.md](references/window-functions.md) | Frames, ranking, running calculations |
+| [time-series.md](references/time-series.md) | Time-series data patterns, BRIN indexes |
+| [event-sourcing.md](references/event-sourcing.md) | Event store, projections, CQRS |
+| [queue-patterns.md](references/queue-patterns.md) | Job queues, SKIP LOCKED, LISTEN/NOTIFY |
+| [encryption.md](references/encryption.md) | pgcrypto, column encryption, TLS |
+| [vector-search.md](references/vector-search.md) | pgvector, embeddings, similarity search |
+| [postgis-patterns.md](references/postgis-patterns.md) | Spatial data, geographic queries |
 
 ### 🚀 DevOps & Migration
 
@@ -93,12 +103,15 @@ flowchart LR
 | [oracle-migration-guide.md](references/oracle-migration-guide.md) | PL/SQL to PL/pgSQL conversion |
 | [cicd-integration.md](references/cicd-integration.md) | GitHub Actions, GitLab CI, Docker |
 | [monitoring-observability.md](references/monitoring-observability.md) | pg_stat_statements, metrics, alerting |
+| [backup-recovery.md](references/backup-recovery.md) | pg_dump, pg_basebackup, PITR |
+| [replication-ha.md](references/replication-ha.md) | Streaming/logical replication, failover |
 
 ### 📊 Data Warehousing
 
 | Document | Purpose |
 |----------|---------|
 | [data-warehousing-medallion.md](references/data-warehousing-medallion.md) | **Medallion Architecture** - Bronze/Silver/Gold, data lineage, ETL |
+| [analytical-queries.md](references/analytical-queries.md) | Analytical query patterns, OLAP optimization, GROUPING SETS |
 
 ### Executable Scripts
 
@@ -262,6 +275,7 @@ SELECT app_migration.release_lock();
 7. ❌ Missing indexes on foreign keys
 8. ❌ `serial`/`bigserial` (use `IDENTITY`)
 9. ❌ `varchar(n)` arbitrary limits (use `text`)
+10. ❌ `SELECT FOR UPDATE` without `NOWAIT`/`SKIP LOCKED`
 
 ---
 
