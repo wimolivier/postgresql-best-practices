@@ -9,7 +9,8 @@ A Claude Code skill providing comprehensive PostgreSQL 18+ best practices for en
 - **PL/pgSQL Coding Standards**: Trivadis-style naming conventions (l_, in_, io_, co_)
 - **Native Migration System**: Pure PL/pgSQL alternative to Flyway/Liquibase
 - **Data Warehousing**: Medallion Architecture (Bronze/Silver/Gold)
-- **And more**: Indexes, constraints, JSONB patterns, RLS, audit logging, Oracle migration
+- **Testing Framework**: Pure PL/pgSQL test suite with assertions and CI integration
+- **And more**: Indexes, partitioning, JSONB patterns, RLS, audit logging, vector search, PostGIS, Oracle migration
 
 ## Installation
 
@@ -61,7 +62,7 @@ This skill is configured with `user-invocable: false`, meaning it won't appear i
 ```
 postgresql-best-practices/
 ├── SKILL.md                 # Main skill file (auto-loaded by Claude)
-├── references/              # Detailed reference documentation
+├── references/              # Detailed reference documentation (34 files)
 │   ├── quick-reference.md   # Single-page cheat sheet
 │   ├── schema-architecture.md
 │   ├── coding-standards-trivadis.md
@@ -70,11 +71,42 @@ postgresql-best-practices/
 │   ├── indexes-constraints.md
 │   ├── migrations.md
 │   ├── anti-patterns.md
-│   └── ... (13 more reference files)
-└── scripts/                 # Executable SQL scripts
-    ├── 001_install_migration_system.sql
-    ├── 002_migration_runner_helpers.sql
-    └── 003_example_migrations.sql
+│   ├── jsonb-patterns.md
+│   ├── row-level-security.md
+│   ├── audit-logging.md
+│   ├── data-warehousing-medallion.md
+│   ├── oracle-migration-guide.md
+│   ├── performance-tuning.md
+│   ├── partitioning.md
+│   ├── replication-ha.md
+│   ├── vector-search.md
+│   ├── full-text-search.md
+│   ├── postgis-patterns.md
+│   ├── time-series.md
+│   ├── window-functions.md
+│   ├── queue-patterns.md
+│   ├── event-sourcing.md
+│   ├── bulk-operations.md
+│   ├── transaction-patterns.md
+│   ├── testing-patterns.md
+│   ├── cicd-integration.md
+│   ├── monitoring-observability.md
+│   ├── backup-recovery.md
+│   ├── encryption.md
+│   ├── session-management.md
+│   ├── analytical-queries.md
+│   ├── schema-naming.md
+│   └── checklists-troubleshooting.md
+├── scripts/                 # Executable SQL scripts
+│   ├── 001_install_migration_system.sql
+│   ├── 002_migration_runner_helpers.sql
+│   ├── 003_example_migrations.sql
+│   └── 999_uninstall_migration_system.sql
+└── tests/                   # Comprehensive test suite
+    ├── framework/           # Test runner and assertions
+    ├── modules/             # Unit tests by topic (11 modules)
+    ├── integration/         # End-to-end workflow tests
+    └── scripts/             # CI runner and test execution scripts
 ```
 
 ## Core Patterns
@@ -114,6 +146,23 @@ AS $$
     SELECT id, email, name FROM data.customers WHERE id = in_id;
 $$;
 ```
+
+## Running Tests
+
+The test suite validates all documented patterns against a real PostgreSQL database.
+
+```bash
+# Run all tests
+./tests/scripts/run_all_tests.sh
+
+# Run a specific module
+./tests/scripts/run_module.sh 01_migration_system
+
+# Run in CI mode (exits with error code on failure)
+./tests/scripts/ci_runner.sh
+```
+
+**Prerequisites**: PostgreSQL 16+ with superuser access. Configure connection in `tests/config/test_config.env`.
 
 ## Updating
 

@@ -8,8 +8,9 @@ This is a **Claude Code Skill** for PostgreSQL 18+ enterprise database developme
 
 **Structure:**
 - `SKILL.md` - Main skill file (frontmatter + core patterns)
-- `references/` - Detailed reference documentation (21 files)
+- `references/` - Detailed reference documentation (34 files)
 - `scripts/` - Executable SQL migration scripts
+- `tests/` - Comprehensive PL/pgSQL test suite (11 modules)
 - `README.md` - Installation instructions
 
 **Installation:** Users copy this entire directory to `.claude/skills/postgresql-best-practices/` (project) or `~/.claude/skills/postgresql-best-practices/` (personal).
@@ -92,6 +93,7 @@ The `scripts/` directory contains a native PL/pgSQL migration system:
 - `001_install_migration_system.sql` - Install the system
 - `002_migration_runner_helpers.sql` - Helper functions
 - `003_example_migrations.sql` - Example patterns
+- `999_uninstall_migration_system.sql` - Clean removal
 
 Usage pattern:
 ```sql
@@ -109,6 +111,23 @@ Key files in `references/`:
 - `plpgsql-table-api.md` - Table API functions/procedures
 - `anti-patterns.md` - Common mistakes to avoid
 - `data-warehousing-medallion.md` - Medallion Architecture (Bronze/Silver/Gold)
+
+## Test Suite
+
+The `tests/` directory contains a comprehensive PL/pgSQL test suite:
+
+```bash
+# Run all tests
+./tests/scripts/run_all_tests.sh
+
+# Run specific module
+./tests/scripts/run_module.sh 01_migration_system
+
+# CI mode
+./tests/scripts/ci_runner.sh
+```
+
+Test modules cover: migrations, schema architecture, PL/pgSQL patterns, data types, anti-patterns, RLS, audit logging, medallion architecture, indexing, bulk operations, and transactions.
 
 ## Critical Anti-Patterns
 
