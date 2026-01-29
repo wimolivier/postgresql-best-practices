@@ -42,10 +42,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS changelog_version_key
     WHERE type = 'versioned' AND success = true;
 
 -- Index for ordering and queries
-CREATE INDEX IF NOT EXISTS idx_changelog_executed 
+CREATE INDEX IF NOT EXISTS changelog_executed_idx
     ON app_migration.changelog(executed_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_changelog_type_success 
+CREATE INDEX IF NOT EXISTS changelog_type_success_idx
     ON app_migration.changelog(type, success);
 
 COMMENT ON TABLE app_migration.changelog IS 'Records all migration executions';
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS app_migration.rollback_history (
     error_message       text
 );
 
-CREATE INDEX IF NOT EXISTS idx_rollback_history_version 
+CREATE INDEX IF NOT EXISTS rollback_history_version_idx
     ON app_migration.rollback_history(version);
 
 COMMENT ON TABLE app_migration.rollback_history IS 'History of all rollback executions';

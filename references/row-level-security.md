@@ -131,7 +131,7 @@ CREATE POLICY tenant_isolation ON data.customers
     WITH CHECK (tenant_id = private.current_tenant_id());
 
 -- Index for policy performance
-CREATE INDEX idx_customers_tenant ON data.customers(tenant_id);
+CREATE INDEX customers_tenant_idx ON data.customers(tenant_id);
 ```
 
 ### API Functions with Tenant Context
@@ -531,12 +531,12 @@ CREATE POLICY ip_restriction ON data.sensitive_data
 
 ```sql
 -- Always index columns used in RLS policies
-CREATE INDEX idx_orders_tenant ON data.orders(tenant_id);
-CREATE INDEX idx_orders_created_by ON data.orders(created_by);
-CREATE INDEX idx_documents_owner ON data.documents(owner_id);
+CREATE INDEX orders_tenant_idx ON data.orders(tenant_id);
+CREATE INDEX orders_created_by_idx ON data.orders(created_by);
+CREATE INDEX documents_owner_idx ON data.documents(owner_id);
 
 -- Composite index for common policy patterns
-CREATE INDEX idx_orders_tenant_created ON data.orders(tenant_id, created_by);
+CREATE INDEX orders_tenant_created_idx ON data.orders(tenant_id, created_by);
 ```
 
 ### Avoid Expensive Policy Functions

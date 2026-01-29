@@ -70,7 +70,7 @@ postgresql-best-practices/
 │   ├── indexes-constraints.md
 │   ├── migrations.md
 │   ├── anti-patterns.md
-│   └── ... (15 more reference files)
+│   └── ... (13 more reference files)
 └── scripts/                 # Executable SQL scripts
     ├── 001_install_migration_system.sql
     ├── 002_migration_runner_helpers.sql

@@ -151,8 +151,8 @@ CREATE TABLE data.orders (
 
 -- Indexes
 CREATE UNIQUE INDEX customers_email_key ON data.customers(lower(email));
-CREATE INDEX idx_orders_customer_id ON data.orders(customer_id);
-CREATE INDEX idx_orders_status ON data.orders(status) WHERE status NOT IN ('completed', 'cancelled');
+CREATE INDEX orders_customer_id_idx ON data.orders(customer_id);
+CREATE INDEX orders_status_idx ON data.orders(status) WHERE status NOT IN ('completed', 'cancelled');
 ```
 
 **Rules for `data` schema:**
@@ -506,7 +506,7 @@ CREATE TABLE app_audit.changelog (
     changed_by text NOT NULL DEFAULT current_user
 );
 
-CREATE INDEX idx_changelog_table ON app_audit.changelog(table_name, changed_at DESC);
+CREATE INDEX changelog_table_idx ON app_audit.changelog(table_name, changed_at DESC);
 ```
 
 ### 5. `app_migration` Schema - Migrations

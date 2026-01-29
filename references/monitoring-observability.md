@@ -176,9 +176,9 @@ CREATE TABLE app_audit.slow_queries (
     notes           text
 );
 
-CREATE INDEX idx_slow_queries_logged ON app_audit.slow_queries(logged_at);
-CREATE INDEX idx_slow_queries_duration ON app_audit.slow_queries(duration_ms DESC);
-CREATE INDEX idx_slow_queries_hash ON app_audit.slow_queries(query_hash);
+CREATE INDEX slow_queries_logged_idx ON app_audit.slow_queries(logged_at);
+CREATE INDEX slow_queries_duration_idx ON app_audit.slow_queries(duration_ms DESC);
+CREATE INDEX slow_queries_hash_idx ON app_audit.slow_queries(query_hash);
 
 -- Function to import from CSV log
 CREATE OR REPLACE PROCEDURE app_audit.import_slow_queries(
@@ -524,7 +524,7 @@ CREATE TABLE app_audit.metrics (
     collected_at    timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_metrics_name_time ON app_audit.metrics(metric_name, collected_at);
+CREATE INDEX metrics_name_time_idx ON app_audit.metrics(metric_name, collected_at);
 
 -- Partition by time for efficiency
 -- (See partitioning section for implementation)

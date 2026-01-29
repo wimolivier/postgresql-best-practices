@@ -104,8 +104,8 @@ flowchart LR
 
 | Script | Purpose |
 |--------|---------|
-| [001_install_migration_system.sql](scripts/001_install_migration_system.sql) | Install migration system |
-| [002_migration_runner_helpers.sql](scripts/002_migration_runner_helpers.sql) | Helper functions for migrations |
+| [001_install_migration_system.sql](scripts/001_install_migration_system.sql) | Install migration system (core functions) |
+| [002_migration_runner_helpers.sql](scripts/002_migration_runner_helpers.sql) | Helper procedures (`run_versioned`, `run_repeatable`) |
 | [003_example_migrations.sql](scripts/003_example_migrations.sql) | Example migration patterns |
 
 ---
@@ -229,7 +229,7 @@ SELECT app_migration.release_lock();
 | Column | `snake_case` | `customer_id`, `created_at` |
 | Primary Key | `id` | `id` |
 | Foreign Key | `{table_singular}_id` | `customer_id` |
-| Index | `idx_{table}_{cols}` | `idx_orders_customer_id` |
+| Index | `{table}_{cols}_idx` | `orders_customer_id_idx` |
 | Unique | `{table}_{cols}_key` | `users_email_key` |
 | Function | `{action}_{entity}` | `get_customer`, `select_orders` |
 | Procedure | `{action}_{entity}` | `insert_order`, `update_status` |

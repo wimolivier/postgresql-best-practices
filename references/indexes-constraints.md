@@ -59,17 +59,17 @@ flowchart TD
 ### Index Naming
 
 ```sql
--- Standard index: idx_{table}_{columns}
-CREATE INDEX idx_orders_customer_id ON data.orders(customer_id);
+-- Standard index: {table}_{columns}_idx (Trivadis v4.4)
+CREATE INDEX orders_customer_id_idx ON data.orders(customer_id);
 
--- Multi-column: idx_{table}_{col1}_{col2}
-CREATE INDEX idx_orders_status_created ON data.orders(status, created_at);
+-- Multi-column: {table}_{col1}_{col2}_idx
+CREATE INDEX orders_status_created_idx ON data.orders(status, created_at);
 
 -- Unique index: {table}_{columns}_key
 CREATE UNIQUE INDEX users_email_key ON data.users(lower(email));
 
--- Partial index: idx_{table}_{column}_{condition_hint}
-CREATE INDEX idx_orders_pending ON data.orders(created_at) WHERE status = 'pending';
+-- Partial index: {table}_{column}_{condition_hint}_idx
+CREATE INDEX orders_pending_idx ON data.orders(created_at) WHERE status = 'pending';
 ```
 
 ## Index Types
@@ -125,19 +125,19 @@ Best for: equality, range queries, sorting
 
 ```sql
 -- Equality
-CREATE INDEX idx_users_email ON data.users(email);
+CREATE INDEX users_email_idx ON data.users(email);
 SELECT * FROM data.users WHERE email = 'user@example.com';
 
 -- Range
-CREATE INDEX idx_orders_created ON data.orders(created_at);
+CREATE INDEX orders_created_idx ON data.orders(created_at);
 SELECT * FROM data.orders WHERE created_at >= '2024-01-01';
 
 -- Sorting
-CREATE INDEX idx_orders_created_desc ON data.orders(created_at DESC);
+CREATE INDEX orders_created_desc_idx ON data.orders(created_at DESC);
 SELECT * FROM data.orders ORDER BY created_at DESC LIMIT 10;
 
 -- Multi-column (column order matters!)
-CREATE INDEX idx_orders_customer_date ON data.orders(customer_id, created_at DESC);
+CREATE INDEX orders_customer_date_idx ON data.orders(customer_id, created_at DESC);
 -- Efficient for: WHERE customer_id = X ORDER BY created_at DESC
 -- Also works for: WHERE customer_id = X (uses first column)
 -- Skip scan (PG18): WHERE created_at > X (can use second column)
@@ -148,7 +148,7 @@ CREATE INDEX idx_orders_customer_date ON data.orders(customer_id, created_at DES
 Best for: equality only, faster than B-tree for simple lookups
 
 ```sql
-CREATE INDEX idx_users_email_hash ON data.users USING hash(email);
+CREATE INDEX users_email_hash_idx ON data.users USING hash(email);
 
 -- Only useful for equality
 SELECT * FROM data.users WHERE email = 'user@example.com';  -- Uses hash
@@ -161,15 +161,15 @@ Best for: arrays, JSONB, full-text search
 
 ```sql
 -- Array containment
-CREATE INDEX idx_products_tags ON data.products USING gin(tags);
+CREATE INDEX products_tags_idx ON data.products USING gin(tags);
 SELECT * FROM data.products WHERE tags @> ARRAY['sale'];
 
 -- JSONB queries
-CREATE INDEX idx_products_data ON data.products USING gin(data);
+CREATE INDEX products_data_idx ON data.products USING gin(data);
 SELECT * FROM data.products WHERE data @> '{"category": "electronics"}';
 
 -- Full-text search
-CREATE INDEX idx_articles_search ON data.articles USING gin(to_tsvector('english', title || ' ' || body));
+CREATE INDEX articles_search_idx ON data.articles USING gin(to_tsvector('english', title || ' ' || body));
 SELECT * FROM data.articles WHERE to_tsvector('english', title || ' ' || body) @@ to_tsquery('postgresql & index');
 ```
 
@@ -179,11 +179,11 @@ Best for: geometric data, range types, full-text search
 
 ```sql
 -- Range overlaps (for temporal data)
-CREATE INDEX idx_reservations_during ON data.reservations USING gist(during);
+CREATE INDEX reservations_during_idx ON data.reservations USING gist(during);
 SELECT * FROM data.reservations WHERE during && tstzrange('2024-03-01', '2024-03-05');
 
 -- Geometric (PostGIS)
-CREATE INDEX idx_locations_geom ON data.locations USING gist(geom);
+CREATE INDEX locations_geom_idx ON data.locations USING gist(geom);
 SELECT * FROM data.locations WHERE ST_DWithin(geom, ST_MakePoint(-122.4, 37.8), 1000);
 ```
 
@@ -193,7 +193,7 @@ Best for: large tables with naturally ordered data (time-series)
 
 ```sql
 -- Very compact index for time-series data
-CREATE INDEX idx_events_created_brin ON data.events USING brin(created_at);
+CREATE INDEX events_created_brin_idx ON data.events USING brin(created_at);
 
 -- Best when data is physically ordered by the indexed column
 -- Much smaller than B-tree but less precise
@@ -208,8 +208,8 @@ Include all columns needed by query to avoid table access:
 ```sql
 -- Query needs: customer_id, status, total
 -- Include extra columns in index
-CREATE INDEX idx_orders_customer_covering 
-    ON data.orders(customer_id) 
+CREATE INDEX orders_customer_covering_idx
+    ON data.orders(customer_id)
     INCLUDE (status, total, created_at);
 
 -- Query satisfied entirely from index
@@ -224,18 +224,18 @@ Index only rows matching a condition:
 
 ```sql
 -- Only index active users
-CREATE INDEX idx_users_email_active 
-    ON data.users(email) 
+CREATE INDEX users_email_active_idx
+    ON data.users(email)
     WHERE is_active = true;
 
 -- Only index pending orders
-CREATE INDEX idx_orders_pending 
-    ON data.orders(customer_id, created_at) 
+CREATE INDEX orders_pending_idx
+    ON data.orders(customer_id, created_at)
     WHERE status = 'pending';
 
 -- Index for soft-deleted records lookup
-CREATE INDEX idx_customers_deleted 
-    ON data.customers(deleted_at) 
+CREATE INDEX customers_deleted_idx
+    ON data.customers(deleted_at)
     WHERE deleted_at IS NOT NULL;
 ```
 
@@ -245,15 +245,15 @@ Index computed values:
 
 ```sql
 -- Case-insensitive email lookup
-CREATE INDEX idx_users_email_lower ON data.users(lower(email));
+CREATE INDEX users_email_lower_idx ON data.users(lower(email));
 SELECT * FROM data.users WHERE lower(email) = lower('User@Example.com');
 
 -- Year from timestamp
-CREATE INDEX idx_orders_year ON data.orders((extract(year from created_at)));
+CREATE INDEX orders_year_idx ON data.orders((extract(year from created_at)));
 SELECT * FROM data.orders WHERE extract(year from created_at) = 2024;
 
 -- JSONB expression
-CREATE INDEX idx_products_category ON data.products((data->>'category'));
+CREATE INDEX products_category_idx ON data.products((data->>'category'));
 SELECT * FROM data.products WHERE data->>'category' = 'electronics';
 ```
 
@@ -286,7 +286,7 @@ Create indexes without blocking writes:
 
 ```sql
 -- Non-blocking index creation (takes longer, allows writes)
-CREATE INDEX CONCURRENTLY idx_orders_customer 
+CREATE INDEX CONCURRENTLY orders_customer_idx
     ON data.orders(customer_id);
 
 -- Note: CONCURRENTLY cannot be used in transactions
@@ -296,7 +296,7 @@ FROM pg_index
 WHERE NOT indisvalid;
 
 -- Rebuild invalid index
-REINDEX INDEX CONCURRENTLY idx_orders_customer;
+REINDEX INDEX CONCURRENTLY orders_customer_idx;
 ```
 
 ## Constraint Types
@@ -429,7 +429,7 @@ CREATE TABLE data.orders (
 );
 
 -- Always index foreign key columns
-CREATE INDEX idx_orders_customer_id ON data.orders(customer_id);
+CREATE INDEX orders_customer_id_idx ON data.orders(customer_id);
 ```
 
 ### Referential Actions
@@ -477,7 +477,7 @@ CREATE TABLE data.categories (
         ON DELETE CASCADE
 );
 
-CREATE INDEX idx_categories_parent_id ON data.categories(parent_id);
+CREATE INDEX categories_parent_id_idx ON data.categories(parent_id);
 ```
 
 ### Deferrable Constraints
@@ -559,7 +559,7 @@ PostgreSQL 18 can skip leading columns in multi-column B-tree indexes:
 
 ```sql
 -- Index on (tenant_id, user_id, created_at)
-CREATE INDEX idx_events_tenant_user_created 
+CREATE INDEX events_tenant_user_created_idx
     ON data.events(tenant_id, user_id, created_at);
 
 -- Before PG18: Required tenant_id filter to use index
@@ -597,13 +597,13 @@ ORDER BY hit_ratio;
 
 ```sql
 -- Rebuild single index (blocking)
-REINDEX INDEX data.idx_orders_customer_id;
+REINDEX INDEX data.orders_customer_id_idx;
 
 -- Rebuild all indexes on table (blocking)
 REINDEX TABLE data.orders;
 
 -- Rebuild without blocking (PG12+)
-REINDEX INDEX CONCURRENTLY data.idx_orders_customer_id;
+REINDEX INDEX CONCURRENTLY data.orders_customer_id_idx;
 
 -- Rebuild all indexes in schema concurrently
 REINDEX SCHEMA CONCURRENTLY app;

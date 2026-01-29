@@ -55,12 +55,13 @@ Application → api schema → data schema
 | Column | singular, snake_case | `customer_id`, `created_at` |
 | PK | `{table}_pk` | `customers_pk` |
 | FK | `{table}_{ref}_fk` | `orders_customers_fk` |
-| Unique | `{table}_{cols}_key` | `customers_email_key` |
-| Index | `idx_{table}_{cols}` | `idx_orders_customer_id` |
+| Unique constraint | `{table}_{cols}_uk` | `customers_email_uk` |
+| Unique index | `{table}_{cols}_key` | `customers_email_key` |
+| Index | `{table}_{cols}_idx` | `orders_customer_id_idx` |
 | Check | `{table}_{col}_ck` | `orders_status_ck` |
 | Function | `{action}_{entity}` | `get_customer` |
 | Procedure | `{action}_{entity}` | `insert_order` |
-| Trigger | `{table}_{timing}_trg` | `orders_bu_trg` |
+| Trigger | `{table}_{timing}{event}_trg` | `orders_bu_trg` |
 
 ---
 
@@ -93,7 +94,7 @@ CREATE TABLE data.customers (
 );
 
 CREATE UNIQUE INDEX customers_email_key ON data.customers(lower(email));
-CREATE INDEX idx_customers_is_active ON data.customers(is_active) WHERE is_active;
+CREATE INDEX customers_is_active_idx ON data.customers(is_active) WHERE is_active;
 
 CREATE TRIGGER customers_bu_trg
     BEFORE UPDATE ON data.customers
@@ -183,14 +184,14 @@ END;
 
 ```sql
 -- Always index foreign keys!
-CREATE INDEX idx_orders_customer_id ON data.orders(customer_id);
+CREATE INDEX orders_customer_id_idx ON data.orders(customer_id);
 
 -- Partial index for common queries
-CREATE INDEX idx_orders_pending ON data.orders(created_at) 
+CREATE INDEX orders_pending_idx ON data.orders(created_at)
     WHERE status = 'pending';
 
 -- Covering index (includes extra columns)
-CREATE INDEX idx_orders_status ON data.orders(status) 
+CREATE INDEX orders_status_idx ON data.orders(status)
     INCLUDE (total, created_at);
 ```
 

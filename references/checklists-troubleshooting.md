@@ -2,6 +2,8 @@
 
 Quick reference checklists for common tasks and solutions to common problems.
 
+> **Related**: See [quick-reference.md](quick-reference.md) for patterns and [anti-patterns.md](anti-patterns.md) for what to avoid.
+
 ---
 
 ## Checklist: New Project Setup

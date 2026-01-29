@@ -167,12 +167,12 @@ CREATE TABLE data.events (
 );
 
 -- Index for common queries
-CREATE INDEX idx_events_entity ON data.events(entity_type, entity_id);
-CREATE INDEX idx_events_type ON data.events(event_type);
-CREATE INDEX idx_events_occurred ON data.events(occurred_at);
+CREATE INDEX events_entity_idx ON data.events(entity_type, entity_id);
+CREATE INDEX events_type_idx ON data.events(event_type);
+CREATE INDEX events_occurred_idx ON data.events(occurred_at);
 
 -- GIN index for payload searches
-CREATE INDEX idx_events_payload ON data.events USING gin(payload);
+CREATE INDEX events_payload_idx ON data.events USING gin(payload);
 
 -- Example events:
 -- { "event_type": "order.created", "entity_type": "order", "payload": {"total": 99.99} }
@@ -210,7 +210,7 @@ WHERE user_id = $1;
 
 ```sql
 -- Index entire JSONB document
-CREATE INDEX idx_products_attributes ON data.products USING gin(attributes);
+CREATE INDEX products_attributes ON data.products USING gin(attributes);
 
 -- Supports operators: @>, ?, ?&, ?|, @?
 -- @>  containment
@@ -224,7 +224,7 @@ CREATE INDEX idx_products_attributes ON data.products USING gin(attributes);
 
 ```sql
 -- More efficient for @> containment queries only
-CREATE INDEX idx_products_attrs_path 
+CREATE INDEX products_attrs_path 
     ON data.products USING gin(attributes jsonb_path_ops);
 
 -- 2-3x smaller index, faster @> queries
@@ -239,7 +239,7 @@ WHERE attributes @> '{"color": "red", "size": "large"}';
 
 ```sql
 -- Index specific JSON path as regular B-tree
-CREATE INDEX idx_products_color 
+CREATE INDEX products_color 
     ON data.products ((attributes->>'color'));
 
 -- Supports =, <, >, LIKE, etc.
@@ -247,7 +247,7 @@ SELECT * FROM data.products
 WHERE attributes->>'color' = 'red';
 
 -- Index with type cast for proper comparison
-CREATE INDEX idx_products_weight 
+CREATE INDEX products_weight 
     ON data.products (((attributes->>'weight')::numeric));
 
 SELECT * FROM data.products 
@@ -258,11 +258,11 @@ WHERE (attributes->>'weight')::numeric > 10;
 
 ```sql
 -- Index deeply nested value
-CREATE INDEX idx_orders_shipping_city 
+CREATE INDEX orders_shipping_city 
     ON data.orders ((shipping_address->>'city'));
 
 -- Or using path extraction
-CREATE INDEX idx_orders_shipping_zip 
+CREATE INDEX orders_shipping_zip 
     ON data.orders ((shipping_address #>> '{zip}'));
 
 -- Query uses the index
@@ -274,7 +274,7 @@ WHERE shipping_address->>'city' = 'New York';
 
 ```sql
 -- Index only products with 'featured' flag
-CREATE INDEX idx_products_featured 
+CREATE INDEX products_featured 
     ON data.products ((attributes->>'category'))
     WHERE attributes @> '{"featured": true}';
 
@@ -711,7 +711,7 @@ WHERE attributes @> '{"color": "red", "size": "large", "material": "cotton"}';
 ALTER TABLE data.products ADD COLUMN category text 
     GENERATED ALWAYS AS (attributes->>'category') STORED;
 
-CREATE INDEX idx_products_category ON data.products(category);
+CREATE INDEX products_category ON data.products(category);
 
 -- Queries use regular B-tree index
 SELECT * FROM data.products WHERE category = 'electronics';
@@ -741,7 +741,7 @@ EXPLAIN (ANALYZE, BUFFERS)
 SELECT * FROM data.products
 WHERE attributes @> '{"color": "red"}';
 
--- Should show: Bitmap Index Scan on idx_products_attributes
+-- Should show: Bitmap Index Scan on products_attributes
 -- If showing Seq Scan, check:
 -- 1. Index exists
 -- 2. Statistics are current (ANALYZE data.products)
@@ -822,7 +822,7 @@ ALTER TABLE data.products ADD COLUMN
     color text GENERATED ALWAYS AS (attributes->>'color') STORED;
 
 -- Now can index and query efficiently
-CREATE INDEX idx_products_color ON data.products(color) WHERE color IS NOT NULL;
+CREATE INDEX products_color ON data.products(color) WHERE color IS NOT NULL;
 ```
 
 ## Schema Design with JSONB
@@ -841,13 +841,13 @@ CREATE TABLE data.events (
 );
 
 -- Index on event_type for filtering
-CREATE INDEX idx_events_type ON data.events(event_type);
+CREATE INDEX events_type_idx ON data.events(event_type);
 
 -- Index on entity for lookup
-CREATE INDEX idx_events_entity ON data.events(entity_type, entity_id);
+CREATE INDEX events_entity_idx ON data.events(entity_type, entity_id);
 
 -- GIN index on payload for flexible queries
-CREATE INDEX idx_events_payload ON data.events USING gin(payload);
+CREATE INDEX events_payload_idx ON data.events USING gin(payload);
 
 -- Example events
 INSERT INTO data.events (event_type, entity_type, entity_id, payload) VALUES
@@ -905,8 +905,8 @@ CREATE TABLE data.form_submissions (
     status      text GENERATED ALWAYS AS (COALESCE(data->>'status', 'pending')) STORED
 );
 
-CREATE INDEX idx_submissions_email ON data.form_submissions(email) WHERE email IS NOT NULL;
-CREATE INDEX idx_submissions_status ON data.form_submissions(status);
+CREATE INDEX submissions_email ON data.form_submissions(email) WHERE email IS NOT NULL;
+CREATE INDEX submissions_status ON data.form_submissions(status);
 ```
 
 ## Indexing Strategies
@@ -915,7 +915,7 @@ CREATE INDEX idx_submissions_status ON data.form_submissions(status);
 
 ```sql
 -- General purpose: indexes all keys and values
-CREATE INDEX idx_products_attrs ON data.products USING gin(attributes);
+CREATE INDEX products_attrs ON data.products USING gin(attributes);
 
 -- Supports operators: @>, ?, ?&, ?|, @?
 SELECT * FROM data.products WHERE attributes @> '{"color": "red"}';
@@ -927,7 +927,7 @@ SELECT * FROM data.products WHERE attributes ?& array['color', 'size'];
 
 ```sql
 -- Optimized for containment queries only
-CREATE INDEX idx_products_attrs_path 
+CREATE INDEX products_attrs_path 
     ON data.products USING gin(attributes jsonb_path_ops);
 
 -- Only supports @> operator, but faster and smaller
@@ -938,13 +938,13 @@ SELECT * FROM data.products WHERE attributes @> '{"category": "electronics"}';
 
 ```sql
 -- For specific key queries
-CREATE INDEX idx_products_color 
+CREATE INDEX products_color 
     ON data.products((attributes->>'color'));
 
 -- Or using generated column (PostgreSQL 12+)
 ALTER TABLE data.products ADD COLUMN 
     color text GENERATED ALWAYS AS (attributes->>'color') STORED;
-CREATE INDEX idx_products_color ON data.products(color);
+CREATE INDEX products_color ON data.products(color);
 
 -- Much faster for: WHERE attributes->>'color' = 'red'
 ```
@@ -953,7 +953,7 @@ CREATE INDEX idx_products_color ON data.products(color);
 
 ```sql
 -- Index nested path
-CREATE INDEX idx_products_brand 
+CREATE INDEX products_brand 
     ON data.products((attributes->'specs'->>'brand'));
 
 -- Query uses index
@@ -1075,7 +1075,7 @@ JOIN data.customers c ON c.email = o.data->>'customer_email';
 -- Better: Extract to column if frequently joined
 ALTER TABLE data.orders ADD COLUMN 
     customer_email text GENERATED ALWAYS AS (data->>'customer_email') STORED;
-CREATE INDEX idx_orders_customer_email ON data.orders(customer_email);
+CREATE INDEX orders_customer_email ON data.orders(customer_email);
 ```
 
 ## Validation Patterns
@@ -1303,7 +1303,7 @@ $$;
 SELECT attributes->>'name' FROM data.products;
 
 -- BETTER: Use covering index
-CREATE INDEX idx_products_attrs_name 
+CREATE INDEX products_attrs_name 
     ON data.products((attributes->>'name')) 
     INCLUDE (id);
 
@@ -1315,7 +1315,7 @@ SELECT id, attributes->>'name' FROM data.products;
 
 ```sql
 -- Index only documents with specific type
-CREATE INDEX idx_events_order_payload 
+CREATE INDEX events_order_payload_idx 
     ON data.events USING gin(payload)
     WHERE event_type LIKE 'order.%';
 

@@ -60,12 +60,12 @@ CREATE TABLE app_audit.changelog (
 );
 
 -- Indexes for common queries
-CREATE INDEX idx_changelog_table ON app_audit.changelog(schema_name, table_name);
-CREATE INDEX idx_changelog_row ON app_audit.changelog(table_name, row_id);
-CREATE INDEX idx_changelog_time ON app_audit.changelog(changed_at);
-CREATE INDEX idx_changelog_user ON app_audit.changelog(app_user_id) WHERE app_user_id IS NOT NULL;
-CREATE INDEX idx_changelog_tenant ON app_audit.changelog(app_tenant_id) WHERE app_tenant_id IS NOT NULL;
-CREATE INDEX idx_changelog_txn ON app_audit.changelog(transaction_id);
+CREATE INDEX changelog_table ON app_audit.changelog(schema_name, table_name);
+CREATE INDEX changelog_row ON app_audit.changelog(table_name, row_id);
+CREATE INDEX changelog_time ON app_audit.changelog(changed_at);
+CREATE INDEX changelog_user ON app_audit.changelog(app_user_id) WHERE app_user_id IS NOT NULL;
+CREATE INDEX changelog_tenant ON app_audit.changelog(app_tenant_id) WHERE app_tenant_id IS NOT NULL;
+CREATE INDEX changelog_txn ON app_audit.changelog(transaction_id);
 
 -- Partition by time for large-scale deployments
 -- See "Retention and Archival" section
@@ -625,7 +625,7 @@ BEGIN
         
         -- Create indexes on new partition
         EXECUTE format(
-            'CREATE INDEX idx_%s_table ON app_audit.%I(table_name)',
+            'CREATE INDEX %s_table_idx ON app_audit.%I(table_name)',
             l_partition_name, l_partition_name
         );
         
@@ -805,17 +805,17 @@ $$;
 
 ```sql
 -- Essential indexes
-CREATE INDEX idx_changelog_table_time ON app_audit.changelog(table_name, changed_at DESC);
-CREATE INDEX idx_changelog_row_time ON app_audit.changelog(table_name, row_id, changed_at DESC);
+CREATE INDEX changelog_table_time ON app_audit.changelog(table_name, changed_at DESC);
+CREATE INDEX changelog_row_time ON app_audit.changelog(table_name, row_id, changed_at DESC);
 
 -- For user activity queries
-CREATE INDEX idx_changelog_user_time ON app_audit.changelog(app_user_id, changed_at DESC)
+CREATE INDEX changelog_user_time ON app_audit.changelog(app_user_id, changed_at DESC)
     WHERE app_user_id IS NOT NULL;
 
 -- For tenant isolation
-CREATE INDEX idx_changelog_tenant_time ON app_audit.changelog(app_tenant_id, changed_at DESC)
+CREATE INDEX changelog_tenant_time ON app_audit.changelog(app_tenant_id, changed_at DESC)
     WHERE app_tenant_id IS NOT NULL;
 
 -- BRIN index for time-ordered data (very efficient for append-only)
-CREATE INDEX idx_changelog_time_brin ON app_audit.changelog USING brin(changed_at);
+CREATE INDEX changelog_time_brin ON app_audit.changelog USING brin(changed_at);
 ```

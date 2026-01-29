@@ -31,7 +31,7 @@ SELECT * FROM data.orders WHERE customer_id = 'uuid-here';
 ```
                                                           QUERY PLAN
 ------------------------------------------------------------------------------------------------------------------------------
- Index Scan using idx_orders_customer_id on orders  (cost=0.43..8.45 rows=1 width=100) (actual time=0.025..0.027 rows=1 loops=1)
+ Index Scan using orders_customer_id_idx on orders  (cost=0.43..8.45 rows=1 width=100) (actual time=0.025..0.027 rows=1 loops=1)
    Index Cond: (customer_id = 'uuid-here'::uuid)
    Buffers: shared hit=3
  Planning Time: 0.085 ms
@@ -63,10 +63,10 @@ SELECT * FROM data.orders WHERE status = 'pending';
 -- Shows: Seq Scan on orders (cost=0.00..1234.00 rows=50000 ...)
 
 -- Solution: Add index
-CREATE INDEX idx_orders_status ON data.orders(status);
+CREATE INDEX orders_status_idx ON data.orders(status);
 
 -- Or partial index if status has few values
-CREATE INDEX idx_orders_pending ON data.orders(created_at) 
+CREATE INDEX orders_pending_idx ON data.orders(created_at)
     WHERE status = 'pending';
 ```
 
@@ -98,10 +98,10 @@ JOIN data.customers c ON c.id = o.customer_id
 WHERE o.created_at > '2024-01-01';
 
 -- Solution 1: Ensure FK is indexed
-CREATE INDEX idx_orders_customer_id ON data.orders(customer_id);
+CREATE INDEX orders_customer_id_idx ON data.orders(customer_id);
 
 -- Solution 2: Use covering index
-CREATE INDEX idx_orders_created_customer 
+CREATE INDEX orders_created_customer_idx
     ON data.orders(created_at, customer_id);
 ```
 
@@ -290,12 +290,12 @@ WHERE NOT EXISTS (
 
 -- Query: WHERE status = 'pending' AND created_at > '2024-01-01'
 -- Good: equality column first
-CREATE INDEX idx_orders_status_created 
+CREATE INDEX orders_status_created_idx
     ON data.orders(status, created_at);
 
 -- Query: WHERE customer_id = $1 ORDER BY created_at DESC
 -- Good: equality first, sort last
-CREATE INDEX idx_orders_customer_created 
+CREATE INDEX orders_customer_created_idx
     ON data.orders(customer_id, created_at DESC);
 ```
 
@@ -304,8 +304,8 @@ CREATE INDEX idx_orders_customer_created
 ```sql
 -- Query frequently needs id, total, status
 -- Include extra columns to avoid table lookup
-CREATE INDEX idx_orders_customer_covering 
-    ON data.orders(customer_id) 
+CREATE INDEX orders_customer_covering_idx
+    ON data.orders(customer_id)
     INCLUDE (total, status, created_at);
 
 -- Results in "Index Only Scan" - much faster
@@ -315,14 +315,14 @@ CREATE INDEX idx_orders_customer_covering
 
 ```sql
 -- Index only active customers (90% of queries)
-CREATE INDEX idx_customers_email_active 
-    ON data.customers(email) 
+CREATE INDEX customers_email_active_idx
+    ON data.customers(email)
     WHERE is_active = true;
 
 -- Index only recent orders
-CREATE INDEX idx_orders_pending_recent 
-    ON data.orders(created_at) 
-    WHERE status = 'pending' 
+CREATE INDEX orders_pending_recent_idx
+    ON data.orders(created_at)
+    WHERE status = 'pending'
       AND created_at > '2024-01-01';
 
 -- Much smaller index, faster updates
@@ -332,15 +332,15 @@ CREATE INDEX idx_orders_pending_recent
 
 ```sql
 -- Query: WHERE lower(email) = lower($1)
-CREATE INDEX idx_customers_email_lower 
+CREATE INDEX customers_email_lower_idx
     ON data.customers(lower(email));
 
 -- Query: WHERE date_trunc('day', created_at) = $1
-CREATE INDEX idx_orders_created_day 
+CREATE INDEX orders_created_day_idx
     ON data.orders(date_trunc('day', created_at));
 
 -- Query: WHERE (data->>'category') = $1
-CREATE INDEX idx_products_category 
+CREATE INDEX products_category_idx
     ON data.products((data->>'category'));
 ```
 
@@ -370,7 +370,7 @@ WHERE idx_scan = 0
 ORDER BY pg_relation_size(indexrelid) DESC;
 
 -- Rebuild bloated indexes
-REINDEX INDEX CONCURRENTLY idx_orders_customer_id;
+REINDEX INDEX CONCURRENTLY orders_customer_id_idx;
 
 -- Or rebuild all indexes on a table
 REINDEX TABLE CONCURRENTLY data.orders;
@@ -456,8 +456,8 @@ CREATE TABLE data.events_2024_02 PARTITION OF data.events
 CREATE TABLE data.events_default PARTITION OF data.events DEFAULT;
 
 -- Indexes are created per-partition
-CREATE INDEX idx_events_2024_01_type ON data.events_2024_01(event_type);
-CREATE INDEX idx_events_2024_02_type ON data.events_2024_02(event_type);
+CREATE INDEX events_2024_01_type_idx ON data.events_2024_01(event_type);
+CREATE INDEX events_2024_02_type_idx ON data.events_2024_02(event_type);
 ```
 
 ### Automatic Partition Management
@@ -489,7 +489,7 @@ BEGIN
         );
         
         EXECUTE format(
-            'CREATE INDEX idx_%s_type ON data.%I(event_type)',
+            'CREATE INDEX %s_type_idx ON data.%I(event_type)',
             l_partition_name, l_partition_name
         );
         

@@ -163,7 +163,7 @@ CREATE UNIQUE INDEX changelog_version_key
     WHERE type = 'versioned';
 
 -- Index for ordering
-CREATE INDEX idx_changelog_executed ON app_migration.changelog(executed_at);
+CREATE INDEX changelog_executed_idx ON app_migration.changelog(executed_at);
 
 COMMENT ON TABLE app_migration.changelog IS 'Records all migration executions';
 ```
@@ -680,7 +680,7 @@ CREATE TABLE data.customers (
 );
 
 CREATE UNIQUE INDEX customers_email_key ON data.customers(lower(email));
-CREATE INDEX idx_customers_is_active ON data.customers(is_active) WHERE is_active = true;
+CREATE INDEX customers_is_active_idx ON data.customers(is_active) WHERE is_active = true;
 
 COMMENT ON TABLE data.customers IS 'Customer accounts';
 ```
@@ -887,49 +887,42 @@ SELECT * FROM app_migration.info();
 -- 1. Acquire lock before running migrations
 SELECT app_migration.acquire_lock();
 
--- 2. Run a versioned migration
-CALL app_migration.execute_migration(
+-- 2. Run a versioned migration (simple helper)
+CALL app_migration.run_versioned(
     in_version := '001',
     in_description := 'Create users table',
-    in_type := 'versioned',
-    in_filename := 'V001__create_users_table.sql',
-    in_sql := $migration$
+    in_sql := $mig$
         CREATE TABLE data.users (
             id uuid PRIMARY KEY DEFAULT uuidv7(),
             email text NOT NULL UNIQUE,
             created_at timestamptz NOT NULL DEFAULT now()
         );
-    $migration$
-);
-
--- 3. Register rollback script (optional)
-CALL app_migration.register_rollback(
-    in_version := '001',
+    $mig$,
     in_rollback_sql := 'DROP TABLE data.users;'
 );
 
--- 4. Run repeatable migration
-CALL app_migration.execute_migration(
-    in_version := 'views',
-    in_description := 'Application views',
-    in_type := 'repeatable',
+-- 3. Run repeatable migration
+CALL app_migration.run_repeatable(
     in_filename := 'R__views.sql',
-    in_sql := $migration$
+    in_description := 'Application views',
+    in_sql := $mig$
         DROP VIEW IF EXISTS api.v_active_users CASCADE;
         CREATE VIEW api.v_active_users AS
         SELECT * FROM data.users WHERE is_active = true;
-    $migration$
+    $mig$
 );
 
--- 5. Check migration status
+-- 4. Check migration status
 SELECT * FROM app_migration.info();
 SELECT * FROM app_migration.get_history(10);
 
--- 6. Release lock
+-- 5. Release lock
 SELECT app_migration.release_lock();
 
 -- To rollback if needed:
 -- SELECT app_migration.acquire_lock();
--- CALL app_migration.rollback_version('001');
+-- CALL app_migration.rollback('001');
 -- SELECT app_migration.release_lock();
 ```
+
+> **Note**: The `run_versioned()` and `run_repeatable()` helpers are provided by `002_migration_runner_helpers.sql`. The core `app_migration.execute()` procedure is available from `001_install_migration_system.sql`.

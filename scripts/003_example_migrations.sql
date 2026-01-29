@@ -30,7 +30,7 @@ CALL app_migration.run_versioned(
         );
         
         CREATE UNIQUE INDEX customers_email_key ON data.customers(lower(email));
-        CREATE INDEX idx_customers_is_active ON data.customers(is_active) WHERE is_active;
+        CREATE INDEX customers_is_active_idx ON data.customers(is_active) WHERE is_active;
         
         COMMENT ON TABLE data.customers IS 'Customer accounts';
     $mig$,
@@ -69,9 +69,9 @@ CALL app_migration.run_versioned(
             CONSTRAINT orders_subtotal_positive CHECK (subtotal >= 0)
         );
         
-        CREATE INDEX idx_orders_customer_id ON data.orders(customer_id);
-        CREATE INDEX idx_orders_status ON data.orders(status) WHERE status NOT IN ('delivered', 'cancelled');
-        CREATE INDEX idx_orders_created ON data.orders(created_at DESC);
+        CREATE INDEX orders_customer_id_idx ON data.orders(customer_id);
+        CREATE INDEX orders_status_idx ON data.orders(status) WHERE status NOT IN ('delivered', 'cancelled');
+        CREATE INDEX orders_created_idx ON data.orders(created_at DESC);
     $mig$,
     in_rollback_sql := 'DROP TABLE IF EXISTS data.orders CASCADE;'
 );
@@ -111,8 +111,8 @@ SELECT app_migration.release_lock();
 SELECT app_migration.acquire_lock();
 
 -- Execute outside transaction
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_customers_phone 
-    ON data.customers(phone) 
+CREATE INDEX CONCURRENTLY IF NOT EXISTS customers_phone_idx
+    ON data.customers(phone)
     WHERE phone IS NOT NULL;
 
 -- Register the migration manually
@@ -121,12 +121,12 @@ SELECT app_migration.register_execution(
     in_description := 'Add phone index (concurrent)',
     in_type := 'versioned',
     in_filename := 'V004__add_phone_index.sql',
-    in_checksum := app_migration.calculate_checksum('CREATE INDEX idx_customers_phone'),
+    in_checksum := app_migration.calculate_checksum('CREATE INDEX customers_phone_idx'),
     in_success := true
 );
 
 -- Register rollback
-CALL app_migration.register_rollback('004', 'DROP INDEX IF EXISTS data.idx_customers_phone;');
+CALL app_migration.register_rollback('004', 'DROP INDEX IF EXISTS data.customers_phone_idx;');
 
 SELECT app_migration.release_lock();
 */

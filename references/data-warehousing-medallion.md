@@ -533,7 +533,7 @@ CREATE UNIQUE INDEX silver_customers_current_key
     WHERE is_current = true;
 
 -- Index for SCD lookups
-CREATE INDEX idx_silver_customers_history 
+CREATE INDEX silver_customers_history_idx 
     ON silver.customers(customer_id, valid_from, valid_to);
 ```
 
@@ -793,8 +793,8 @@ CREATE TABLE gold.dim_customer (
 CREATE UNIQUE INDEX gold_dim_customer_bk ON gold.dim_customer(customer_id) WHERE is_current;
 
 -- Common query patterns
-CREATE INDEX idx_dim_customer_segment ON gold.dim_customer(customer_segment) WHERE is_current;
-CREATE INDEX idx_dim_customer_domain ON gold.dim_customer(email_domain) WHERE is_current;
+CREATE INDEX dim_customer_segment_idx ON gold.dim_customer(customer_segment) WHERE is_current;
+CREATE INDEX dim_customer_domain_idx ON gold.dim_customer(email_domain) WHERE is_current;
 ```
 
 ### Date Dimension
@@ -1169,9 +1169,9 @@ CREATE TABLE dwh_lineage.pipeline_runs (
     metrics         jsonb DEFAULT '{}'
 );
 
-CREATE INDEX idx_pipeline_runs_name ON dwh_lineage.pipeline_runs(pipeline_name);
-CREATE INDEX idx_pipeline_runs_status ON dwh_lineage.pipeline_runs(status);
-CREATE INDEX idx_pipeline_runs_started ON dwh_lineage.pipeline_runs(started_at);
+CREATE INDEX pipeline_runs_name_idx ON dwh_lineage.pipeline_runs(pipeline_name);
+CREATE INDEX pipeline_runs_status_idx ON dwh_lineage.pipeline_runs(status);
+CREATE INDEX pipeline_runs_started_idx ON dwh_lineage.pipeline_runs(started_at);
 
 -- Table-level lineage
 CREATE TABLE dwh_lineage.table_lineage (
@@ -1205,9 +1205,9 @@ CREATE TABLE dwh_lineage.table_lineage (
     notes           text
 );
 
-CREATE INDEX idx_table_lineage_source ON dwh_lineage.table_lineage(source_table);
-CREATE INDEX idx_table_lineage_target ON dwh_lineage.table_lineage(target_table);
-CREATE INDEX idx_table_lineage_batch ON dwh_lineage.table_lineage(batch_id);
+CREATE INDEX table_lineage_source_idx ON dwh_lineage.table_lineage(source_table);
+CREATE INDEX table_lineage_target_idx ON dwh_lineage.table_lineage(target_table);
+CREATE INDEX table_lineage_batch_idx ON dwh_lineage.table_lineage(batch_id);
 
 -- Column-level lineage (optional, for detailed tracking)
 CREATE TABLE dwh_lineage.column_lineage (
@@ -2206,22 +2206,22 @@ $$;
 -- ============================================================================
 
 -- Dimension indexes (for lookups)
-CREATE INDEX idx_dim_customer_email ON gold.dim_customer(email) WHERE is_current;
-CREATE INDEX idx_dim_customer_segment ON gold.dim_customer(customer_segment) WHERE is_current;
+CREATE INDEX dim_customer_email_idx ON gold.dim_customer(email) WHERE is_current;
+CREATE INDEX dim_customer_segment_idx ON gold.dim_customer(customer_segment) WHERE is_current;
 
 -- Fact table indexes (for aggregations)
-CREATE INDEX idx_fact_sales_date ON gold.fact_sales(date_key);
-CREATE INDEX idx_fact_sales_customer ON gold.fact_sales(customer_key);
-CREATE INDEX idx_fact_sales_product ON gold.fact_sales(product_key);
+CREATE INDEX fact_sales_date_idx ON gold.fact_sales(date_key);
+CREATE INDEX fact_sales_customer_idx ON gold.fact_sales(customer_key);
+CREATE INDEX fact_sales_product_idx ON gold.fact_sales(product_key);
 
 -- Composite indexes for common query patterns
-CREATE INDEX idx_fact_sales_date_customer ON gold.fact_sales(date_key, customer_key);
+CREATE INDEX fact_sales_date_customer_idx ON gold.fact_sales(date_key, customer_key);
 
 -- BRIN indexes for very large fact tables (ordered by date)
-CREATE INDEX idx_fact_sales_date_brin ON gold.fact_sales USING brin(date_key);
+CREATE INDEX fact_sales_date_brin_idx ON gold.fact_sales USING brin(date_key);
 
 -- Covering indexes for aggregate queries
-CREATE INDEX idx_fact_sales_covering ON gold.fact_sales(date_key) 
+CREATE INDEX fact_sales_covering_idx ON gold.fact_sales(date_key) 
     INCLUDE (quantity, amount);
 ```
 

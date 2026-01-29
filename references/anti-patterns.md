@@ -348,7 +348,7 @@ CREATE TABLE posts (
     id uuid PRIMARY KEY,
     tags text[] NOT NULL DEFAULT '{}'
 );
-CREATE INDEX idx_posts_tags ON posts USING gin(tags);
+CREATE INDEX posts_tags_idx ON posts USING gin(tags);
 
 -- Good: Junction table (with referential integrity)
 CREATE TABLE post_tags (
@@ -545,7 +545,7 @@ CREATE TABLE order_items (
     id uuid PRIMARY KEY,
     order_id uuid NOT NULL REFERENCES orders(id) ON DELETE CASCADE
 );
-CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX order_items_order_id_idx ON order_items(order_id);
 ```
 
 ### ❌ Over-Indexing

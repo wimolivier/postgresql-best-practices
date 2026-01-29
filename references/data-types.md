@@ -307,7 +307,7 @@ CREATE TABLE data.products (
 );
 
 -- GIN index for jsonb queries
-CREATE INDEX idx_products_data ON data.products USING gin (data);
+CREATE INDEX products_data_idx ON data.products USING gin (data);
 
 -- Query jsonb
 SELECT * FROM data.products WHERE data @> '{"category": "electronics"}';
@@ -338,7 +338,7 @@ CREATE TABLE data.articles (
 );
 
 -- GIN index for array contains queries
-CREATE INDEX idx_articles_tags ON data.articles USING gin (tags);
+CREATE INDEX articles_tags_idx ON data.articles USING gin (tags);
 
 -- Query arrays
 SELECT * FROM data.articles WHERE tags @> ARRAY['postgresql'];
@@ -427,5 +427,5 @@ CREATE TABLE data.users (
 );
 
 -- Can index stored generated columns
-CREATE INDEX idx_users_full_name ON data.users(full_name);
+CREATE INDEX users_full_name_idx ON data.users(full_name);
 ```

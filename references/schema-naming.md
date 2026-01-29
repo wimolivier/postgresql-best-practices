@@ -134,10 +134,10 @@ retry_count     integer DEFAULT 0
 ## Index Naming
 
 ### Standard Indexes
-Pattern: `idx_{table}_{column(s)}`
+Pattern: `{table}_{column(s)}_idx` (Trivadis v4.4)
 ```sql
-CREATE INDEX idx_orders_customer_id ON data.orders(customer_id);
-CREATE INDEX idx_orders_status_created ON data.orders(status, created_at DESC);
+CREATE INDEX orders_customer_id_idx ON data.orders(customer_id);
+CREATE INDEX orders_status_created_idx ON data.orders(status, created_at DESC);
 ```
 
 ### Unique Indexes
@@ -149,47 +149,49 @@ CREATE UNIQUE INDEX users_email_key ON data.users(lower(email));
 ### Partial Indexes
 Include condition hint:
 ```sql
-CREATE INDEX idx_orders_pending ON data.orders(created_at) 
+CREATE INDEX orders_pending_idx ON data.orders(created_at)
     WHERE status = 'pending';
 ```
 
 ### Expression Indexes
 ```sql
-CREATE INDEX idx_users_email_lower ON data.users(lower(email));
+CREATE INDEX users_email_lower_idx ON data.users(lower(email));
 ```
 
 ## Constraint Naming
 
+> **Note**: PostgreSQL auto-generates constraint names with suffixes like `_pkey`, `_fkey`, `_key`, `_check`. The patterns below use shorter Trivadis-style suffixes for explicit naming. Both approaches are acceptable; explicit naming provides clearer error messages.
+
 ### Primary Keys
-Pattern: `{table}_pkey`
+Pattern: `{table}_pk`
 ```sql
-ALTER TABLE data.orders ADD CONSTRAINT orders_pkey PRIMARY KEY (id);
+ALTER TABLE data.orders ADD CONSTRAINT orders_pk PRIMARY KEY (id);
 ```
 
 ### Foreign Keys
-Pattern: `{table}_{column}_fkey`
+Pattern: `{table}_{reftable}_fk`
 ```sql
-ALTER TABLE data.orders 
-    ADD CONSTRAINT orders_customer_id_fkey 
+ALTER TABLE data.orders
+    ADD CONSTRAINT orders_customers_fk
     FOREIGN KEY (customer_id) REFERENCES data.customers(id);
 ```
 
 ### Unique Constraints
-Pattern: `{table}_{column(s)}_key`
+Pattern: `{table}_{column(s)}_uk`
 ```sql
-ALTER TABLE data.users 
-    ADD CONSTRAINT users_email_key UNIQUE (email);
+ALTER TABLE data.users
+    ADD CONSTRAINT users_email_uk UNIQUE (email);
 ```
 
 ### Check Constraints
-Pattern: `{table}_{column}_check`
+Pattern: `{table}_{column}_ck`
 ```sql
-ALTER TABLE data.orders 
-    ADD CONSTRAINT orders_status_check 
+ALTER TABLE data.orders
+    ADD CONSTRAINT orders_status_ck
     CHECK (status IN ('draft', 'pending', 'confirmed', 'shipped', 'delivered', 'cancelled'));
 
-ALTER TABLE data.orders 
-    ADD CONSTRAINT orders_total_positive_check 
+ALTER TABLE data.orders
+    ADD CONSTRAINT orders_total_ck
     CHECK (total >= 0);
 ```
 

@@ -1,6 +1,6 @@
 # PL/pgSQL Coding Standards (Trivadis-Style)
 
-This document adapts the well-established [Trivadis PL/SQL & SQL Coding Guidelines](https://trivadis.github.io/plsql-and-sql-coding-guidelines/) for PostgreSQL PL/pgSQL development. These conventions provide a consistent, readable, and maintainable codebase familiar to developers coming from Oracle backgrounds.
+This document adapts the well-established [Trivadis PL/SQL & SQL Coding Guidelines v4.4](https://trivadis.github.io/plsql-and-sql-coding-guidelines/v4.4/) for PostgreSQL PL/pgSQL development. These conventions provide a consistent, readable, and maintainable codebase familiar to developers coming from Oracle backgrounds.
 
 ## Table of Contents
 
@@ -87,7 +87,7 @@ graph LR
 | **Foreign Key** | `{table}_{reftable}_fk` | `orders_customers_fk` |
 | **Unique Constraint** | `{table}_{columns}_uk` | `customers_email_uk` |
 | **Check Constraint** | `{table}_{column}_ck` | `orders_status_ck` |
-| **Index** | `idx_{table}_{columns}` | `idx_orders_customer_id` |
+| **Index** | `{table}_{columns}_idx` | `orders_customer_id_idx` |
 | **Unique Index** | `{table}_{columns}_key` | `customers_email_key` |
 | **Function** | `{verb}_{noun}` or `{noun}_by_{filter}` | `calculate_total`, `customer_by_email` |
 | **Procedure** | `{verb}_{noun}` | `insert_customer`, `update_status` |
@@ -390,6 +390,31 @@ $$;
 
 ## Code Structure
 
+### Indentation Standard
+
+Use **3-space indentation** for PL/pgSQL code blocks (Trivadis v4.4 standard):
+
+```sql
+CREATE FUNCTION api.example_function(in_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+AS $$
+DECLARE
+   l_result text;  -- 3 spaces
+BEGIN
+   IF in_id IS NOT NULL THEN
+      SELECT name INTO l_result  -- 6 spaces
+      FROM data.customers
+      WHERE id = in_id;
+   END IF;
+
+   RETURN l_result;
+END example_function;
+$$;
+```
+
+> **Note**: While 2-space and 4-space indentation are common in other languages, 3-space indentation is the Trivadis standard for PL/SQL and PL/pgSQL. This provides good readability while maintaining compact code.
+
 ### Function/Procedure Template
 
 ```sql
@@ -494,6 +519,40 @@ BEGIN
 END;
 $$;
 ```
+
+### END Labels (G-7120)
+
+Always add the function or procedure name after the END keyword for clarity:
+
+```sql
+-- Good (Trivadis G-7120)
+CREATE FUNCTION api.calculate_order_total(in_order_id uuid)
+RETURNS numeric
+LANGUAGE plpgsql
+AS $$
+BEGIN
+   -- function logic...
+   RETURN l_total;
+END calculate_order_total;
+$$;
+
+-- Avoid (unnamed END)
+CREATE FUNCTION api.calculate_order_total(in_order_id uuid)
+RETURNS numeric
+LANGUAGE plpgsql
+AS $$
+BEGIN
+   -- function logic...
+   RETURN l_total;
+END;
+$$;
+```
+
+This convention:
+- Improves readability in long procedures
+- Makes it clear which block is ending
+- Helps identify mismatched BEGIN/END pairs
+- Aligns with Oracle PL/SQL best practices
 
 ### Loop Labels
 
