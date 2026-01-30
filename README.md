@@ -162,7 +162,7 @@ The test suite validates all documented patterns against a real PostgreSQL datab
 ./tests/scripts/ci_runner.sh
 ```
 
-**Prerequisites**: PostgreSQL 16+ with superuser access. Configure connection in `tests/config/test_config.env`.
+**Prerequisites**: PostgreSQL 18+ with superuser access. Configure connection in `tests/config/test_config.env`.
 
 ## Updating
 
@@ -173,6 +173,3 @@ cd .claude/skills/postgresql-best-practices  # or ~/.claude/skills/...
 git pull
 ```
 
-## License
-
-[Add your license here]

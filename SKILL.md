@@ -120,6 +120,7 @@ flowchart LR
 | [001_install_migration_system.sql](scripts/001_install_migration_system.sql) | Install migration system (core functions) |
 | [002_migration_runner_helpers.sql](scripts/002_migration_runner_helpers.sql) | Helper procedures (`run_versioned`, `run_repeatable`) |
 | [003_example_migrations.sql](scripts/003_example_migrations.sql) | Example migration patterns |
+| [999_uninstall_migration_system.sql](scripts/999_uninstall_migration_system.sql) | Clean removal of migration system |
 
 ---
 
