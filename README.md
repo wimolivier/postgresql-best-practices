@@ -130,9 +130,13 @@ Application → api schema → data schema
 | Prefix | Type |
 |--------|------|
 | `l_` | Local variable |
+| `g_` | Session/global |
+| `co_` | Constant |
 | `in_` | IN parameter |
 | `io_` | INOUT parameter |
-| `co_` | Constant |
+| `c_` | Cursor |
+| `r_` | Record |
+| `t_` | Array |
 
 ### API Function Pattern
 
