@@ -539,6 +539,62 @@ CREATE INDEX documents_owner_idx ON data.documents(owner_id);
 CREATE INDEX orders_tenant_created_idx ON data.orders(tenant_id, created_by);
 ```
 
+### Cache Function Results with Subselect
+
+When a policy calls a function (e.g., to get the current user or tenant), PostgreSQL may evaluate it **once per row**. Wrapping the call in a scalar subselect causes the planner to evaluate it once and cache the result.
+
+```sql
+-- BAD: Function called for every row in the table
+CREATE POLICY tenant_isolation ON data.orders
+    FOR ALL
+    USING (tenant_id = private.current_tenant_id());
+-- On a 1M-row table, private.current_tenant_id() is called 1M times
+
+-- GOOD: Subselect evaluated once, result cached
+CREATE POLICY tenant_isolation ON data.orders
+    FOR ALL
+    USING (tenant_id = (SELECT private.current_tenant_id()));
+-- 100x+ faster on large tables
+```
+
+Apply the same pattern to any function used in a policy expression:
+
+```sql
+-- BAD
+CREATE POLICY user_data ON data.documents
+    FOR SELECT
+    USING (owner_id = private.current_user_id());
+
+-- GOOD
+CREATE POLICY user_data ON data.documents
+    FOR SELECT
+    USING (owner_id = (SELECT private.current_user_id()));
+```
+
+For complex access checks, combine the subselect pattern with a `SECURITY DEFINER` helper function that performs an indexed lookup instead of a per-row check:
+
+```sql
+-- Helper function: runs as definer, bypasses RLS, does indexed lookup
+CREATE FUNCTION private.is_team_member(in_team_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM data.team_members
+        WHERE team_id = in_team_id
+          AND user_id = (SELECT private.current_user_id())
+    );
+$$;
+
+-- Policy uses subselect-wrapped helper
+CREATE POLICY team_orders ON data.orders
+    FOR SELECT
+    USING ((SELECT private.is_team_member(team_id)));
+```
+
 ### Avoid Expensive Policy Functions
 
 ```sql

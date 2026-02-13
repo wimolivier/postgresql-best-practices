@@ -8,9 +8,10 @@ This document covers query optimization, EXPLAIN analysis, connection pooling, a
 2. [Common Query Optimizations](#common-query-optimizations)
 3. [Index Optimization](#index-optimization)
 4. [Connection Pooling](#connection-pooling)
-5. [Partitioning Strategies](#partitioning-strategies)
-6. [Configuration Tuning](#configuration-tuning)
-7. [Monitoring Queries](#monitoring-queries)
+5. [Prepared Statements](#prepared-statements)
+6. [Partitioning Strategies](#partitioning-strategies)
+7. [Configuration Tuning](#configuration-tuning)
+8. [Monitoring Queries](#monitoring-queries)
 
 ## EXPLAIN ANALYZE Guide
 
@@ -431,6 +432,97 @@ $$;
 | `session` | Long-lived connections, session variables | ✅ Yes |
 | `transaction` | Short queries, web apps | ✅ Yes (recommended) |
 | `statement` | Simple queries only | ⚠️ Limited |
+
+## Prepared Statements
+
+Prepared statements separate query parsing/planning from execution. They improve performance for frequently executed queries by reusing the query plan.
+
+### Basic PREPARE / EXECUTE
+
+```sql
+-- Prepare a named statement
+PREPARE get_customer_orders (uuid) AS
+    SELECT id, total, created_at
+    FROM data.orders
+    WHERE customer_id = $1
+    ORDER BY created_at DESC;
+
+-- Execute with parameters (plan is reused)
+EXECUTE get_customer_orders('550e8400-e29b-41d4-a716-446655440000');
+
+-- Deallocate when done
+DEALLOCATE get_customer_orders;
+
+-- Deallocate all prepared statements
+DEALLOCATE ALL;
+```
+
+### When to Use
+
+Prepared statements help when:
+- The same query structure is executed hundreds or thousands of times per session
+- The query has a stable plan regardless of parameter values
+- You are using session-mode pooling or persistent connections
+
+They add overhead when:
+- A query is executed only once (parsing + planning cost is paid regardless, plus the extra round trip)
+- Parameter values cause dramatically different optimal plans (e.g., highly skewed distributions)
+
+### Plan Caching: Generic vs Custom Plans
+
+PostgreSQL creates **custom plans** (parameter-specific) for the first 5 executions, then switches to a **generic plan** if it performs comparably. You can control this behavior.
+
+```sql
+-- Force generic plans (skip the 5 custom-plan warm-up)
+SET plan_cache_mode = 'force_generic_plan';
+
+-- Force custom plans (always re-plan with actual parameter values)
+SET plan_cache_mode = 'force_custom_plan';
+
+-- Default: auto-select (recommended for most workloads)
+SET plan_cache_mode = 'auto';
+```
+
+Use `force_custom_plan` when parameter values produce very different result set sizes (e.g., `status = 'active'` returns 95% of rows vs `status = 'deleted'` returns 0.1%).
+
+### Connection Pooling Interaction
+
+Prepared statements are **per-connection state**. In transaction-mode pooling (the recommended mode for the Table API pattern), the server connection changes between transactions, so prepared statements are lost.
+
+```ini
+# pgbouncer.ini — clean up prepared statements when connection returns to pool
+server_reset_query = DEALLOCATE ALL; DISCARD ALL
+```
+
+**Best approach**: Prefer server-side functions (Table API) over client-side prepared statements. When your application calls `SELECT * FROM api.get_customer(in_id := $1)`, PostgreSQL caches the plan for the function body automatically — no client-side `PREPARE` needed, and it works with any pool mode.
+
+```sql
+-- Table API function — plan is cached server-side, pool-mode safe
+CREATE FUNCTION api.get_customer(in_id uuid)
+RETURNS TABLE (id uuid, email text, name text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+    SELECT id, email, name FROM data.customers WHERE id = in_id;
+$$;
+```
+
+If you must use client-side prepared statements with PgBouncer 1.21+, enable `protocol_query` mode which proxies the PostgreSQL extended query protocol (Parse/Bind/Execute) and handles prepared statement forwarding transparently.
+
+### Monitoring Prepared Statements
+
+```sql
+-- View all prepared statements in the current session
+SELECT name, statement, prepare_time, parameter_types, result_types
+FROM pg_prepared_statements;
+
+-- Check if generic or custom plan is in use
+-- (generic_plans > 0 indicates the planner switched to generic)
+SELECT name, generic_plans, custom_plans
+FROM pg_prepared_statements;
+```
 
 ## Partitioning Strategies
 

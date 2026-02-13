@@ -282,6 +282,116 @@ END;
 $$;
 ```
 
+### Pool Sizing
+
+The most common mistake is making the pool too large. A small, well-tuned pool outperforms a large one because fewer connections mean less context switching, less lock contention, and better CPU cache utilization.
+
+**Formula**: `pool_size = (CPU cores * 2) + effective_spindle_count`
+
+For SSDs or cloud storage (no spinning disks), simplify to: `pool_size = CPU cores * 2`
+
+| Server | CPU Cores | SSD? | Pool Size |
+|--------|-----------|------|-----------|
+| Small (cloud) | 4 | Yes | 8 |
+| Medium | 8 | Yes | 16 |
+| Large | 16 | Yes | 32 |
+| Large (HDD) | 16 | No (4 disks) | 36 |
+
+> These are **database connection** pool sizes (PgBouncer `default_pool_size`). The client-side pool (`max_client_conn`) can be much larger since PgBouncer multiplexes clients onto fewer server connections.
+
+### max_connections Tuning
+
+The default `max_connections = 100` is often sufficient. Each connection consumes ~5-10 MB of RAM (for `work_mem`, temp buffers, connection state). Increasing it carelessly wastes memory and hurts performance.
+
+```sql
+-- Check current usage vs limit
+SELECT
+    current_setting('max_connections')::int AS max_connections,
+    (SELECT COUNT(*) FROM pg_stat_activity) AS current_connections,
+    round(100.0 * (SELECT COUNT(*) FROM pg_stat_activity)
+        / current_setting('max_connections')::int, 1) AS utilization_pct;
+
+-- Reserve connections for superuser access
+-- In postgresql.conf:
+-- superuser_reserved_connections = 3  (default)
+```
+
+**Rule of thumb**: With PgBouncer in front, keep `max_connections` low (2-4x your pool size) and let PgBouncer handle the client fan-out. There is no benefit to setting `max_connections = 1000` if only 32 connections are active at a time.
+
+### Idle Timeout Settings
+
+Idle connections waste resources. Use timeouts to reclaim them.
+
+```sql
+-- Kill transactions left open by accident (e.g., forgotten BEGIN without COMMIT)
+ALTER SYSTEM SET idle_in_transaction_session_timeout = '60s';
+
+-- Kill completely idle connections after 10 minutes (PostgreSQL 14+)
+-- Useful for applications that open connections and forget to close them
+ALTER SYSTEM SET idle_session_timeout = '10min';
+
+SELECT pg_reload_conf();
+```
+
+```ini
+# pgbouncer.ini
+
+# Reclaim server connections sitting idle in PgBouncer's pool
+server_idle_timeout = 600   ; Close server connection after 10 min idle
+
+# Disconnect clients that have been idle too long (no active query or txn)
+client_idle_timeout = 0     ; 0 = disabled (default); set to e.g. 3600 for 1 hour
+
+# Time to wait for a server connection before giving up
+server_connect_timeout = 15
+```
+
+### Connection Limits Per Role
+
+Prevent a single application or role from monopolizing all connections.
+
+```sql
+-- Limit the app service role to 50 connections
+ALTER ROLE app_service CONNECTION LIMIT 50;
+
+-- Limit a reporting role to fewer connections
+ALTER ROLE app_reporting CONNECTION LIMIT 10;
+
+-- Check current limits
+SELECT rolname, rolconnlimit
+FROM pg_roles
+WHERE rolconnlimit > 0;
+```
+
+### Monitoring Pool Utilization
+
+Use `pg_stat_activity` to monitor connection usage (see also `monitoring-observability.md` §Connection Monitoring for a full `api.get_connection_pool_status()` function).
+
+```sql
+-- Connection summary by state and application
+SELECT
+    application_name,
+    state,
+    COUNT(*) AS connections
+FROM pg_stat_activity
+WHERE datname = current_database()
+GROUP BY application_name, state
+ORDER BY connections DESC;
+
+-- Find connections idle in transaction (potential pool leaks)
+SELECT
+    pid,
+    usename,
+    application_name,
+    state,
+    now() - state_change AS idle_duration,
+    left(query, 80) AS last_query
+FROM pg_stat_activity
+WHERE state = 'idle in transaction'
+  AND state_change < now() - interval '30 seconds'
+ORDER BY state_change;
+```
+
 ## Session Configuration
 
 ### Role-Based Defaults

@@ -605,6 +605,131 @@ IF (SELECT COUNT(*) FROM orders WHERE customer_id = in_customer_id) > 0 THEN
 IF EXISTS (SELECT 1 FROM orders WHERE customer_id = in_customer_id) THEN
 ```
 
+### ❌ N+1 Query Pattern
+
+**Problem**: Application executes 1 query to fetch parent rows, then N individual queries to fetch related data for each row. This is the most common ORM-induced performance problem — a page showing 50 customers with their latest order generates 51 queries instead of 1-2.
+
+**How it happens**: ORMs with lazy loading (e.g., Django, SQLAlchemy, ActiveRecord) fetch related objects on first access inside a loop. The code looks clean but generates catastrophic query patterns.
+
+```sql
+-- Bad: Application loop generates N+1 queries
+-- Query 1: Get all customers
+SELECT id, name FROM data.customers WHERE is_active = true;
+
+-- Query 2..N+1: For EACH customer, fetch orders (called in a loop)
+SELECT id, total, created_at FROM data.orders WHERE customer_id = '<customer-1-id>';
+SELECT id, total, created_at FROM data.orders WHERE customer_id = '<customer-2-id>';
+-- ... repeated for every customer
+```
+
+**Solution 1**: Batch fetch with array parameter (see also `performance-tuning.md` §Avoiding N+1 Queries).
+
+```sql
+-- Good: Single query with array parameter
+CREATE FUNCTION api.select_orders_by_customers(in_customer_ids uuid[])
+RETURNS TABLE (
+    customer_id uuid,
+    order_id uuid,
+    total numeric,
+    created_at timestamptz
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+    SELECT customer_id, id, total, created_at
+    FROM data.orders
+    WHERE customer_id = ANY(in_customer_ids)
+    ORDER BY customer_id, created_at DESC;
+$$;
+```
+
+**Solution 2**: JOIN-based API function returning denormalized data.
+
+```sql
+-- Good: Single call returns customers with their latest order
+CREATE FUNCTION api.select_customers_with_latest_order()
+RETURNS TABLE (
+    customer_id uuid,
+    customer_name text,
+    latest_order_id uuid,
+    latest_order_total numeric,
+    latest_order_date timestamptz
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+    SELECT DISTINCT ON (c.id)
+        c.id,
+        c.name,
+        o.id,
+        o.total,
+        o.created_at
+    FROM data.customers c
+    LEFT JOIN data.orders o ON o.customer_id = c.id
+    WHERE c.is_active = true
+    ORDER BY c.id, o.created_at DESC;
+$$;
+```
+
+**Solution 3**: Lateral join for top-N-per-group (e.g., last 3 orders per customer).
+
+```sql
+-- Good: Lateral join — top 3 orders per customer in a single query
+CREATE FUNCTION api.select_customers_with_recent_orders(
+    in_limit integer DEFAULT 3
+)
+RETURNS TABLE (
+    customer_id uuid,
+    customer_name text,
+    order_id uuid,
+    order_total numeric,
+    order_date timestamptz
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+    SELECT
+        c.id,
+        c.name,
+        lo.id,
+        lo.total,
+        lo.created_at
+    FROM data.customers c
+    CROSS JOIN LATERAL (
+        SELECT o.id, o.total, o.created_at
+        FROM data.orders o
+        WHERE o.customer_id = c.id
+        ORDER BY o.created_at DESC
+        LIMIT in_limit
+    ) lo
+    WHERE c.is_active = true
+    ORDER BY c.id, lo.created_at DESC;
+$$;
+```
+
+**Detection**: Use `pg_stat_statements` to find repetitive single-row queries with high call counts — a telltale sign of N+1 loops.
+
+```sql
+-- Detect N+1 candidates: high-call, low-row queries with parameterized WHERE
+SELECT
+    calls,
+    round(mean_exec_time::numeric, 2) AS avg_ms,
+    round(total_exec_time::numeric, 2) AS total_ms,
+    rows / calls AS avg_rows,
+    left(query, 120) AS query_preview
+FROM pg_stat_statements
+WHERE calls > 1000
+  AND rows / calls <= 1
+ORDER BY calls DESC
+LIMIT 20;
+```
+
 ### ❌ Selecting Without LIMIT
 
 **Problem**: Unexpectedly large result sets crash applications.
@@ -618,7 +743,7 @@ SELECT * FROM events WHERE created_at > '2024-01-01';
 
 ```sql
 -- Good: Explicit limit
-SELECT * FROM events 
+SELECT * FROM events
 WHERE created_at > '2024-01-01'
 ORDER BY created_at DESC
 LIMIT 1000;

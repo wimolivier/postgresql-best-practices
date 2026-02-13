@@ -10,7 +10,9 @@
 7. [Core Migration Functions](#core-migration-functions)
 8. [Migration File Conventions](#migration-file-conventions)
 9. [Rollback Support](#rollback-support)
-10. [Complete Implementation](#complete-implementation)
+10. [Idempotent Constraint Creation](#idempotent-constraint-creation)
+11. [Blue-Green Deployment Patterns](#blue-green-deployment-patterns)
+12. [Complete Implementation](#complete-implementation)
 
 ## Overview
 
@@ -806,6 +808,69 @@ BEGIN
     END;
 END;
 $$;
+```
+
+## Idempotent Constraint Creation
+
+PostgreSQL does not support `ADD CONSTRAINT IF NOT EXISTS`. Running `ALTER TABLE ... ADD CONSTRAINT` in a migration that may be re-executed will fail on the second run. Use a `DO` block to check `pg_constraint` first.
+
+### Unique Constraints
+
+```sql
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'customers_email_uk'
+          AND conrelid = 'data.customers'::regclass
+    ) THEN
+        ALTER TABLE data.customers
+            ADD CONSTRAINT customers_email_uk UNIQUE (email);
+    END IF;
+END $$;
+```
+
+### Foreign Keys
+
+```sql
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'orders_customers_fk'
+          AND conrelid = 'data.orders'::regclass
+    ) THEN
+        ALTER TABLE data.orders
+            ADD CONSTRAINT orders_customers_fk
+            FOREIGN KEY (customer_id) REFERENCES data.customers(id);
+    END IF;
+END $$;
+```
+
+### Check Constraints
+
+```sql
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'orders_total_ck'
+    ) THEN
+        ALTER TABLE data.orders
+            ADD CONSTRAINT orders_total_ck CHECK (total >= 0);
+    END IF;
+END $$;
+```
+
+### Inspect Existing Constraints
+
+```sql
+-- List all constraints on a table
+SELECT conname, contype, pg_get_constraintdef(oid)
+FROM pg_constraint
+WHERE conrelid = 'data.orders'::regclass;
+
+-- contype values: 'p' = PRIMARY KEY, 'f' = FOREIGN KEY, 'u' = UNIQUE, 'c' = CHECK
 ```
 
 ## Blue-Green Deployment Patterns

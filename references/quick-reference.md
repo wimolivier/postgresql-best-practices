@@ -224,6 +224,23 @@ SELECT app_migration.release_lock();
 
 ---
 
+## Connection Pool Sizing
+
+```
+pool_size = (CPU cores × 2) + spindle_count     -- HDD
+pool_size = CPU cores × 2                        -- SSD / cloud
+```
+
+| Cores | Pool Size | Notes |
+|-------|-----------|-------|
+| 4 | 8 | Small cloud instance |
+| 8 | 16 | Medium |
+| 16 | 32 | Large (SSD) |
+
+Keep `max_connections` low (2-4× pool size) when using PgBouncer. Each idle connection costs ~5-10 MB RAM.
+
+---
+
 ## Grants / Permissions
 
 ```sql
@@ -255,6 +272,7 @@ ALTER ROLE app_service SET search_path = api, pg_temp;
 | Missing FK indexes | Always index FKs |
 | `timestamp` | `timestamptz` |
 | `varchar(255)` | `text` |
+| N+1 loops (1 query + N per row) | Batch fetch with `ANY(uuid[])`, JOINs, or `LATERAL` |
 
 ---
 
