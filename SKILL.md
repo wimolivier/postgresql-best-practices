@@ -1,32 +1,33 @@
 ---
 name: postgresql-best-practices
-user-invocable: false
-description: |
-  PostgreSQL 18+ comprehensive best practices for enterprise database development. Provides schema
-  architecture patterns, Table API design, PL/pgSQL coding standards, migrations, and data warehousing.
-
-  USE THIS SKILL WHEN THE USER:
-  - Creates PostgreSQL schemas, tables, functions, procedures, or triggers
-  - Asks about PostgreSQL data types (uuid, text, timestamptz, jsonb, numeric)
-  - Writes PL/pgSQL code and needs naming conventions (l_, in_, io_, co_ prefixes)
-  - Implements Table API pattern (SECURITY DEFINER functions, schema separation)
-  - Sets up database migrations or schema versioning
-  - Needs index optimization, constraint design, or query performance help
-  - Asks about PostgreSQL 18+ features (uuidv7, virtual columns, temporal constraints)
-  - Builds data warehouses with Medallion Architecture (Bronze/Silver/Gold)
-  - Needs data lineage tracking, ETL patterns, or audit logging
-  - Reviews database code for best practices or anti-patterns
-  - Migrates from Oracle PL/SQL to PostgreSQL PL/pgSQL
-  - Sets up CI/CD pipelines for database changes
-  
-  CORE PATTERNS:
-  - Three-schema separation: data (tables) → private (internal) → api (external)
-  - Table API: All access through SECURITY DEFINER functions with SET search_path
-  - Native migration system: Pure PL/pgSQL alternative to Flyway/Liquibase
-  - Trivadis naming: l_ (local), in_ (input), io_ (inout), co_ (constant)
+description: PostgreSQL 18+ best practices for enterprise database development. Covers schema architecture, Table API design, PL/pgSQL standards, migrations, indexing, performance, data warehousing, ETL, lineage, Oracle migration, CI/CD, and PostgreSQL 18+ features. Use for schema, table, function, procedure, trigger, data type, migration, indexing, query review, audit logging, and Medallion architecture work.
 ---
 
 # PostgreSQL Advanced Best Practices (PostgreSQL 18+)
+
+## When to use
+
+Use this skill when the user:
+
+- Creates PostgreSQL schemas, tables, functions, procedures, or triggers
+- Asks about PostgreSQL data types such as `uuid`, `text`, `timestamptz`, `jsonb`, or `numeric`
+- Writes PL/pgSQL code and needs naming conventions like `l_`, `in_`, `io_`, or `co_`
+- Implements the Table API pattern with `SECURITY DEFINER` functions and schema separation
+- Sets up database migrations or schema versioning
+- Needs index optimization, constraint design, or query performance help
+- Asks about PostgreSQL 18+ features such as `uuidv7`, virtual columns, or temporal constraints
+- Builds data warehouses with Medallion Architecture (Bronze/Silver/Gold)
+- Needs data lineage tracking, ETL patterns, or audit logging
+- Reviews database code for best practices or anti-patterns
+- Migrates from Oracle PL/SQL to PostgreSQL PL/pgSQL
+- Sets up CI/CD pipelines for database changes
+
+## Core patterns
+
+- Three-schema separation: `data` → `private` → `api`
+- Table API: all access through `SECURITY DEFINER` functions with explicit `SET search_path`
+- Native migration system: pure PL/pgSQL alternative to Flyway or Liquibase
+- Trivadis naming: `l_` (local), `in_` (input), `io_` (inout), `co_` (constant)
 
 ## Architecture at a Glance
 
