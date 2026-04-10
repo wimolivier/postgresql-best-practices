@@ -681,6 +681,8 @@ CREATE FUNCTION private.ord_validate_status_transition(in_from text, in_to text)
 
 ### Option 2: Sub-Schema Pattern (For Large Applications)
 
+> **For Oracle migrators:** the full walkthrough — file-per-module layout, per-package grants, IDE navigation, and design rules — is in [oracle-migration-guide.md → Packages to Schemas → Oracle-Package Style](oracle-migration-guide.md#oracle-package-style-sub-schemas--file-per-module). The brief overview below stands; the Oracle guide is the long-form companion.
+
 For very large applications, create sub-schemas under `api`:
 
 ```sql

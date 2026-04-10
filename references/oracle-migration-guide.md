@@ -452,6 +452,481 @@ AS $$
 $$;
 ```
 
+### Oracle-Package Style: Sub-Schemas + File-per-Module
+
+For teams porting Oracle PL/SQL codebases, the single flat `api` schema loses the *package* mental model — the collapsible, namespaced unit that holds every routine for one domain. The pattern below restores it by giving each Oracle-package equivalent its own sub-schema (`api_customers`, `api_orders`, …) and its own source file. Combined, they deliver the closest thing PostgreSQL has to Oracle packages: per-domain folders in your IDE, per-package grants, and one file per "package body."
+
+#### When to Use This Pattern
+
+This is the recommended layout for **Oracle-migration projects**. The package mental model is so deeply ingrained in PL/SQL teams that the familiarity benefit can justify sub-schemas earlier than the canonical 50+ tables / 200+ functions threshold documented in [coding-standards-trivadis.md → Option 2](coding-standards-trivadis.md#option-2-sub-schema-pattern-for-large-applications). That said:
+
+- **Smaller projects** (under ~20 tables) without an Oracle background should still start with the canonical single `api` schema described in [schema-architecture.md](schema-architecture.md). Sub-schemas add real overhead in grants, search_path, and migration runners.
+- **Larger projects** with clean domain boundaries — and especially anything porting from Oracle — benefit from sub-schemas regardless of exact table count. The bigger the codebase, the more the IDE-tree grouping pays off.
+
+#### Package Map
+
+A 12-table online-store example, mapped to 10 packages. Tightly-coupled child tables fold into their parent's package — same way Oracle would bundle `orders` and `order_items` operations in one `orders_pkg`.
+
+| Package schema | Tables it owns | Notes |
+|---|---|---|
+| `api_customers` | `data.customers` | |
+| `api_addresses` | `data.addresses` | |
+| `api_categories` | `data.categories` | |
+| `api_products` | `data.products` | |
+| `api_inventory` | `data.inventory` | |
+| `api_carts` | `data.carts`, `data.cart_items` | child folds in |
+| `api_orders` | `data.orders`, `data.order_items` | child folds in |
+| `api_payments` | `data.payments` | |
+| `api_shipments` | `data.shipments` | |
+| `api_reviews` | `data.reviews` | |
+
+10 packages cover 12 tables. Note that **tables stay in `data`** — only the routines get sub-schema-ized. Do not create `data_orders` or `data_products`; that fragments foreign keys and complicates joins.
+
+#### Schema Creation
+
+```sql
+-- Core storage and internals
+CREATE SCHEMA data;
+CREATE SCHEMA private;
+
+-- One "package" per API domain
+CREATE SCHEMA api_customers;
+CREATE SCHEMA api_addresses;
+CREATE SCHEMA api_categories;
+CREATE SCHEMA api_products;
+CREATE SCHEMA api_inventory;
+CREATE SCHEMA api_carts;
+CREATE SCHEMA api_orders;
+CREATE SCHEMA api_payments;
+CREATE SCHEMA api_shipments;
+CREATE SCHEMA api_reviews;
+
+-- Lock down the default namespace
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+```
+
+Schema names use the **plural** convention to mirror table naming (`data.orders` → `api_orders`), consistent with [coding-standards-trivadis.md](coding-standards-trivadis.md#database-object-naming).
+
+#### Directory Layout (File-per-Module)
+
+```
+sql/
+├── 000_schemas.sql              -- CREATE SCHEMA statements above
+│
+├── data/                        -- Tables, indexes, constraints
+│   ├── 010_customers.sql
+│   ├── 011_addresses.sql
+│   ├── 012_categories.sql
+│   ├── 013_products.sql
+│   ├── 014_inventory.sql
+│   ├── 015_carts.sql            -- carts + cart_items together
+│   ├── 016_orders.sql           -- orders + order_items together
+│   ├── 017_payments.sql
+│   ├── 018_shipments.sql
+│   └── 019_reviews.sql
+│
+├── private/                     -- Helpers + trigger functions
+│   ├── 100_set_updated_at.sql
+│   ├── 101_log_audit.sql
+│   └── 110_triggers.sql
+│
+├── api/                         -- One file per package (Oracle "package body")
+│   ├── 200_customers.sql        -- api_customers.*
+│   ├── 201_addresses.sql        -- api_addresses.*
+│   ├── 202_categories.sql       -- api_categories.*
+│   ├── 203_products.sql         -- api_products.*
+│   ├── 204_inventory.sql        -- api_inventory.*
+│   ├── 205_carts.sql            -- api_carts.*
+│   ├── 206_orders.sql           -- api_orders.*
+│   ├── 207_payments.sql         -- api_payments.*
+│   ├── 208_shipments.sql        -- api_shipments.*
+│   └── 209_reviews.sql          -- api_reviews.*
+│
+└── grants/
+    └── 900_grants.sql           -- GRANT USAGE / EXECUTE per package
+```
+
+**Numeric prefixes** give deterministic load order in any `psql -f` loop or migration runner, and IDEs render them in sequence. The `200_*` band reserves room for 99 packages before colliding with the next band.
+
+#### Package Routine Inventory
+
+Each package contains the same kinds of routines you'd find in an Oracle package body. Names get shorter because the package context lives in the schema name.
+
+##### `api_customers` (file: `sql/api/200_customers.sql`)
+
+- `api_customers.get_by_id(in_id uuid)`
+- `api_customers.get_by_email(in_email text)`
+- `api_customers.select_verified()`
+- `api_customers.insert(in_email, in_full_name, INOUT io_id)`
+- `api_customers.update(in_id, in_full_name)`
+- `api_customers.delete(in_id)`
+
+##### `api_addresses` (file: `201_addresses.sql`)
+
+- `api_addresses.get_by_id(in_id)`
+- `api_addresses.select_by_customer(in_customer_id)`
+- `api_addresses.insert(...)`
+- `api_addresses.update(...)`
+- `api_addresses.delete(in_id)`
+
+##### `api_categories` (file: `202_categories.sql`)
+
+- `api_categories.get_by_id(in_id)`
+- `api_categories.select_all()`
+- `api_categories.select_by_parent(in_parent_id)`
+- `api_categories.insert(...)`
+- `api_categories.update(...)`
+- `api_categories.delete(in_id)`
+
+##### `api_products` (file: `203_products.sql`)
+
+- `api_products.get_by_id(in_id)`
+- `api_products.get_by_sku(in_sku)`
+- `api_products.select_by_category(in_category_id)`
+- `api_products.select_by_category_and_active(in_category_id, in_is_active)`
+- `api_products.calculate_rating(in_id)`
+- `api_products.insert(...)`
+- `api_products.update(...)`
+- `api_products.upsert(...)`
+- `api_products.delete(in_id)`
+
+##### `api_inventory` (file: `204_inventory.sql`)
+
+- `api_inventory.get_by_product(in_product_id)`
+- `api_inventory.select_by_warehouse(in_warehouse_id)`
+- `api_inventory.calculate_available_stock(in_product_id)`
+- `api_inventory.update_quantity(in_id, in_qty)`
+
+##### `api_carts` (file: `205_carts.sql`) — covers carts + cart_items
+
+- `api_carts.get_by_id(in_id)`
+- `api_carts.get_by_customer(in_customer_id)`
+- `api_carts.insert(in_customer_id, INOUT io_id)`
+- `api_carts.delete(in_id)`
+- `api_carts.item_select_by_cart(in_cart_id)`
+- `api_carts.item_insert(...)`
+- `api_carts.item_upsert(...)`
+- `api_carts.item_update_quantity(in_id, in_qty)`
+- `api_carts.item_delete(in_id)`
+
+##### `api_orders` (file: `206_orders.sql`) — covers orders + order_items
+
+- `api_orders.get_by_id(in_id)`
+- `api_orders.select_by_customer(in_customer_id)`
+- `api_orders.select_by_status_and_date(in_status, in_from, in_to)`
+- `api_orders.calculate_total(in_id)`
+- `api_orders.insert(in_customer_id, INOUT io_id)`
+- `api_orders.update_status(in_id, in_new_status)`
+- `api_orders.delete(in_id)`
+- `api_orders.item_select_by_order(in_order_id)`
+- `api_orders.item_insert(...)`
+- `api_orders.item_delete(in_id)`
+
+##### `api_payments` (file: `207_payments.sql`)
+
+- `api_payments.get_by_id(in_id)`
+- `api_payments.select_by_order(in_order_id)`
+- `api_payments.validate(in_id)`
+- `api_payments.insert(...)`
+- `api_payments.update_status(in_id, in_new_status)`
+
+##### `api_shipments` (file: `208_shipments.sql`)
+
+- `api_shipments.get_by_id(in_id)`
+- `api_shipments.select_by_order(in_order_id)`
+- `api_shipments.insert(...)`
+- `api_shipments.update_status(in_id, in_new_status)`
+
+##### `api_reviews` (file: `209_reviews.sql`)
+
+- `api_reviews.get_by_id(in_id)`
+- `api_reviews.select_by_product(in_product_id)`
+- `api_reviews.select_by_customer(in_customer_id)`
+- `api_reviews.insert(...)`
+- `api_reviews.update(...)`
+- `api_reviews.delete(in_id)`
+
+#### Sample Package File: `sql/api/206_orders.sql`
+
+The full "package body" for `api_orders`. Everything for orders + order_items lives in one file:
+
+```sql
+-- =============================================================================
+-- api_orders package
+-- Owns: data.orders, data.order_items
+-- Depends on: data (read/write), private (helpers, triggers)
+-- =============================================================================
+
+-- ─── READS ───────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION api_orders.get_by_id(in_order_id uuid)
+RETURNS TABLE (id uuid, customer_id uuid, status text, total_amount numeric, placed_at timestamptz)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+    SELECT id, customer_id, status, total_amount, placed_at
+      FROM data.orders
+     WHERE id = in_order_id;
+$$;
+
+CREATE OR REPLACE FUNCTION api_orders.select_by_customer(
+    in_customer_id uuid,
+    in_limit       integer DEFAULT 100,
+    in_offset      integer DEFAULT 0
+)
+RETURNS TABLE (id uuid, status text, total_amount numeric, placed_at timestamptz)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+    SELECT id, status, total_amount, placed_at
+      FROM data.orders
+     WHERE customer_id = in_customer_id
+     ORDER BY created_at DESC
+     LIMIT in_limit OFFSET in_offset;
+$$;
+
+CREATE OR REPLACE FUNCTION api_orders.select_by_status_and_date(
+    in_status     text,
+    in_start_date timestamptz,
+    in_end_date   timestamptz
+)
+RETURNS TABLE (id uuid, customer_id uuid, total_amount numeric, placed_at timestamptz)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+    SELECT id, customer_id, total_amount, placed_at
+      FROM data.orders
+     WHERE status = in_status
+       AND placed_at >= in_start_date
+       AND placed_at <  in_end_date
+     ORDER BY placed_at DESC;
+$$;
+
+CREATE OR REPLACE FUNCTION api_orders.calculate_total(in_order_id uuid)
+RETURNS numeric
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+    SELECT COALESCE(SUM(quantity * unit_price), 0)
+      FROM data.order_items
+     WHERE order_id = in_order_id;
+$$;
+
+-- ─── WRITES ──────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE PROCEDURE api_orders.insert(
+    in_customer_id uuid,
+    INOUT io_id    uuid DEFAULT NULL
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+BEGIN
+    INSERT INTO data.orders (customer_id)
+    VALUES (in_customer_id)
+    RETURNING id INTO io_id;
+END;
+$$;
+
+CREATE OR REPLACE PROCEDURE api_orders.update_status(
+    in_order_id   uuid,
+    in_new_status text
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+BEGIN
+    UPDATE data.orders
+       SET status     = in_new_status,
+           updated_at = now()
+     WHERE id = in_order_id;
+END;
+$$;
+
+CREATE OR REPLACE PROCEDURE api_orders.delete(in_order_id uuid)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+BEGIN
+    DELETE FROM data.orders WHERE id = in_order_id;
+END;
+$$;
+
+-- ─── CHILD: order_items (lives in the same package) ─────────────────────────
+
+CREATE OR REPLACE FUNCTION api_orders.item_select_by_order(in_order_id uuid)
+RETURNS TABLE (id uuid, product_id uuid, quantity integer, unit_price numeric)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+    SELECT id, product_id, quantity, unit_price
+      FROM data.order_items
+     WHERE order_id = in_order_id;
+$$;
+
+CREATE OR REPLACE PROCEDURE api_orders.item_insert(
+    in_order_id   uuid,
+    in_product_id uuid,
+    in_quantity   integer,
+    in_unit_price numeric,
+    INOUT io_id   uuid DEFAULT NULL
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+BEGIN
+    INSERT INTO data.order_items (order_id, product_id, quantity, unit_price)
+    VALUES (in_order_id, in_product_id, in_quantity, in_unit_price)
+    RETURNING id INTO io_id;
+END;
+$$;
+
+CREATE OR REPLACE PROCEDURE api_orders.item_delete(in_id uuid)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = data, private, pg_temp
+AS $$
+BEGIN
+    DELETE FROM data.order_items WHERE id = in_id;
+END;
+$$;
+
+-- ─── PACKAGE METADATA ────────────────────────────────────────────────────────
+
+COMMENT ON SCHEMA api_orders IS
+    'Orders package — orders and order_items. Owns data.orders, data.order_items.';
+```
+
+Every routine uses `SECURITY DEFINER SET search_path = data, private, pg_temp` and parameters are prefixed `in_` / `io_` per Trivadis convention. This file *is* the package body — readable top to bottom, no jumping between files.
+
+#### Per-Package Grants
+
+The biggest operational win of sub-schemas: **least-privilege grants happen at schema granularity**, not function-by-function.
+
+```sql
+-- sql/grants/900_grants.sql
+
+-- App role gets every package
+GRANT USAGE ON SCHEMA api_customers,  api_addresses,  api_categories,
+                       api_products,   api_inventory,  api_carts,
+                       api_orders,     api_payments,   api_shipments,
+                       api_reviews
+    TO app_role;
+
+GRANT EXECUTE ON ALL FUNCTIONS  IN SCHEMA api_customers TO app_role;
+GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA api_customers TO app_role;
+-- ... repeat per package, or wrap in a DO block
+
+-- Fine-grained: shipping microservice gets only what it needs
+GRANT USAGE   ON SCHEMA             api_shipments, api_orders TO shipping_svc;
+GRANT EXECUTE ON ALL FUNCTIONS  IN SCHEMA api_shipments       TO shipping_svc;
+GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA api_shipments       TO shipping_svc;
+GRANT EXECUTE ON FUNCTION api_orders.get_by_id(uuid)          TO shipping_svc;
+```
+
+No function-by-function whitelisting. New routines added to a package are automatically covered (combined with `ALTER DEFAULT PRIVILEGES`).
+
+#### Optional: search_path for Callers
+
+If you want callers to use short-form references like `SELECT orders.get_by_id(...)` rather than fully-qualified names, set the search_path on the role:
+
+```sql
+ALTER ROLE app_role SET search_path = api_customers, api_addresses, api_categories,
+                                       api_products, api_inventory, api_carts,
+                                       api_orders, api_payments, api_shipments,
+                                       api_reviews, pg_catalog;
+```
+
+In practice, fully-qualified `api_orders.get_by_id(...)` is more self-documenting at the call site and avoids silent shadowing if two packages happen to expose a routine with the same name. Configuring search_path is mostly useful for ad-hoc `psql` sessions.
+
+#### IDE Tree — The Payoff
+
+In DataGrip / DBeaver / pgAdmin, the database browser renders each package as a collapsible folder of 5–10 routines:
+
+```
+postgres
+├── data                        ← tables only
+│   ├── customers
+│   ├── addresses
+│   ├── orders
+│   ├── order_items
+│   └── ...
+├── private                     ← helpers, triggers
+│
+├── api_carts                   ← collapse/expand like an Oracle package
+│   ├── Functions
+│   │   ├── get_by_customer
+│   │   ├── get_by_id
+│   │   └── item_select_by_cart
+│   └── Procedures
+│       ├── delete
+│       ├── insert
+│       ├── item_delete
+│       ├── item_insert
+│       ├── item_update_quantity
+│       └── item_upsert
+│
+├── api_orders                  ← each package is a tidy, small folder
+│   ├── Functions
+│   │   ├── calculate_total
+│   │   ├── get_by_id
+│   │   ├── item_select_by_order
+│   │   ├── select_by_customer
+│   │   └── select_by_status_and_date
+│   └── Procedures
+│       ├── delete
+│       ├── insert
+│       ├── item_delete
+│       ├── item_insert
+│       └── update_status
+│
+├── api_products
+│   └── ...
+└── ...
+```
+
+Compared to a flat 60+ routine `api` schema, navigation becomes **pick package → pick routine** instead of search/filter. That is the Oracle package mental model, restored.
+
+#### psql Introspection
+
+```
+\dn api_*                       -- list all packages
+\df api_orders.*                -- list all routines in a package
+\df+ api_orders.get_by_id       -- full signature + COMMENT
+```
+
+This is the equivalent of Oracle's `DESC customers_pkg` — fast, terminal-native package introspection.
+
+#### Design Rules That Keep Boundaries Clean
+
+These five rules keep package boundaries from eroding over time:
+
+1. **Packages do not call each other's `api_*` functions directly.** If `api_orders` needs product data, it reads `data.products` directly. Cross-package API-to-API calls create hidden coupling and blur permission boundaries.
+2. **Shared helpers live in `private`**, not in an `api_common` package. If multiple packages need the same logic, factor it into a `private` function and call it from each.
+3. **One file = one package = one `api_*` schema.** Never split a package across multiple files; never mix two packages in one file. The 1:1:1 mapping is the whole point.
+4. **Child tables stay in their parent's package** unless they become independently useful. `order_items` belongs in `api_orders`. Promote a child to its own package only when external systems need direct access to it.
+5. **Tables stay in `data`** — only routines get sub-schema-ized. Do not create `data_orders` or `data_products`; that fragments foreign keys and complicates joins.
+
+#### Cross-References
+
+- [`coding-standards-trivadis.md` → Option 2: Sub-Schema Pattern](coding-standards-trivadis.md#option-2-sub-schema-pattern-for-large-applications) — brief overview and the canonical 50+ table / 200+ function warning.
+- [`schema-architecture.md`](schema-architecture.md) — the canonical single `api` schema pattern, recommended as the default for non-Oracle teams and smaller projects.
+- [`schema-naming.md` → Function & Procedure Naming](schema-naming.md#function--procedure-naming) — the `{action}_{entity}` and `in_`/`io_` parameter conventions used throughout the routines above.
+
 ## Sequences and Identity
 
 ```sql
